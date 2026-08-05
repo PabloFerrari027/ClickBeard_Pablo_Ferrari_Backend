@@ -53,7 +53,7 @@ export class EnvConfig {
 
     if (errors.length > 0) {
       throw new Error(
-        `Variáveis de ambiente inválidas:\n${errors
+        `Invalid environment variables:\n${errors
           .map((error) => Object.values(error.constraints ?? {}).join(', '))
           .join('\n')}`,
       );

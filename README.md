@@ -1,64 +1,64 @@
 # ClickBeard
 
-API REST para gerenciamento de agendamentos de barbearia, construída com [NestJS](https://nestjs.com/) e TypeScript.
+REST API for managing barbershop appointments, built with [NestJS](https://nestjs.com/) and TypeScript.
 
-## Arquitetura
+## Architecture
 
-O projeto segue a estrutura modular padrão do NestJS, organizada por domínio:
+The project follows NestJS's standard modular structure, organized by domain:
 
 ```text
 src/
-├── main.ts                  # Bootstrap da aplicação e configuração do Swagger
-├── app.module.ts             # Módulo raiz, global
+├── main.ts                  # Application bootstrap and Swagger configuration
+├── app.module.ts             # Root, global module
 ├── modules/
-│   ├── auth/                 # Autenticação
-│   ├── identity/              # Identidade / usuários
-│   ├── barber/                # Cadastro e gestão de barbeiros
-│   └── scheduling/            # Agendamento de horários
+│   ├── auth/                 # Authentication
+│   ├── identity/              # Identity / users
+│   ├── barber/                # Barber registration and management
+│   └── scheduling/            # Appointment scheduling
 └── shared/
-    ├── config/                # Configuração de ambiente, Postgres, Redis e filas
-    ├── database/               # Integração com PostgreSQL via Sequelize
-    └── queue/                  # Integração com filas via BullMQ/Redis
+    ├── config/                # Environment, Postgres, Redis and queue configuration
+    ├── database/               # PostgreSQL integration via Sequelize
+    └── queue/                  # Queue integration via BullMQ/Redis
 ```
 
-- Cada domínio de negócio (`auth`, `identity`, `barber`, `scheduling`) vive em seu próprio módulo dentro de `src/modules`, mantendo o código isolado e fácil de evoluir de forma independente.
-- `src/shared` concentra as integrações e configurações transversais reutilizadas pelos módulos de domínio: variáveis de ambiente validadas (`class-validator`), conexão com o PostgreSQL (Sequelize) e filas assíncronas com Redis (BullMQ).
-- A infraestrutura de apoio (PostgreSQL, Redis e, opcionalmente, a própria aplicação) roda em containers Docker, orquestrados pelo `docker-compose.yml`.
-- A documentação interativa da API é gerada automaticamente pelo Swagger e fica disponível em `/docs` quando a aplicação está em execução.
+- Each business domain (`auth`, `identity`, `barber`, `scheduling`) lives in its own module under `src/modules`, keeping the code isolated and easy to evolve independently.
+- `src/shared` concentrates cross-cutting integrations and configuration reused across domain modules: validated environment variables (`class-validator`), PostgreSQL connection (Sequelize), and asynchronous queues with Redis (BullMQ).
+- Supporting infrastructure (PostgreSQL, Redis and, optionally, the application itself) runs in Docker containers, orchestrated by `docker-compose.yml`.
+- Interactive API documentation is generated automatically by Swagger and is available at `/docs` while the application is running.
 
-## Tecnologias
+## Technologies
 
-- **[NestJS](https://nestjs.com/)** + **TypeScript** — framework e linguagem principais da aplicação.
-- **[Sequelize](https://sequelize.org/)** (`sequelize-typescript`) + **PostgreSQL** — ORM e banco de dados relacional.
-- **[BullMQ](https://docs.bullmq.io/)** + **Redis** — filas de processamento assíncrono e cache.
-- **[Swagger](https://docs.nestjs.com/openapi/introduction)** (`@nestjs/swagger`) — documentação interativa da API.
-- **class-validator** / **class-transformer** — validação e transformação de dados (ex.: variáveis de ambiente, DTOs).
-- **Jest** + **Supertest** — testes unitários e end-to-end.
-- **ESLint** + **Prettier** — padronização e qualidade de código.
-- **Commitizen** (`cz-conventional-changelog`) — padronização de mensagens de commit.
-- **Docker** / **Docker Compose** — containerização da aplicação e da infraestrutura (PostgreSQL e Redis).
+- **[NestJS](https://nestjs.com/)** + **TypeScript** — the application's main framework and language.
+- **[Sequelize](https://sequelize.org/)** (`sequelize-typescript`) + **PostgreSQL** — ORM and relational database.
+- **[BullMQ](https://docs.bullmq.io/)** + **Redis** — asynchronous processing queues and cache.
+- **[Swagger](https://docs.nestjs.com/openapi/introduction)** (`@nestjs/swagger`) — interactive API documentation.
+- **class-validator** / **class-transformer** — data validation and transformation (e.g., environment variables, DTOs).
+- **Jest** + **Supertest** — unit and end-to-end testing.
+- **ESLint** + **Prettier** — code standardization and quality.
+- **Commitizen** (`cz-conventional-changelog`) — commit message standardization.
+- **Docker** / **Docker Compose** — containerization of the application and infrastructure (PostgreSQL and Redis).
 
 ## Scripts
 
-O projeto disponibiliza uma série de scripts para facilitar o gerenciamento da infraestrutura e do ambiente de desenvolvimento.
+The project provides a series of scripts to make it easier to manage infrastructure and the development environment.
 
-### Configuração Inicial
+### Initial Setup
 
 #### `npm run setup`
 
-Realiza toda a configuração inicial do ambiente.
+Performs the entire initial environment setup.
 
-#### O que este comando faz
+#### What this command does
 
-1. Instala todas as dependências do projeto.
-2. Cria o arquivo `.env` a partir do `.env.example` (caso ainda não exista).
-3. Inicializa os containers do PostgreSQL e Redis.
-4. Aguarda o PostgreSQL ficar disponível.
-5. Executa todas as migrations.
-6. Executa todos os seeders.
-7. Finaliza informando que o ambiente está pronto para desenvolvimento.
+1. Installs all project dependencies.
+2. Creates the `.env` file from `.env.example` (if it doesn't already exist).
+3. Starts the PostgreSQL and Redis containers.
+4. Waits for PostgreSQL to become available.
+5. Runs all migrations.
+6. Runs all seeders.
+7. Finishes by reporting that the environment is ready for development.
 
-Após a conclusão basta iniciar a aplicação:
+Once it's done, simply start the application:
 
 ```bash
 npm run dev
@@ -68,7 +68,7 @@ npm run dev
 
 ### Docker
 
-Todos os comandos utilizam o arquivo:
+All commands use the file:
 
 ```text
 docker/docker-compose.yml
@@ -76,65 +76,65 @@ docker/docker-compose.yml
 
 #### `npm run docker:up`
 
-Inicializa toda a infraestrutura definida no Docker Compose.
+Starts all the infrastructure defined in Docker Compose.
 
-Utilize este comando quando desejar subir todos os serviços da aplicação.
+Use this command when you want to bring up all of the application's services.
 
 ---
 
 #### `npm run docker:down`
 
-Encerra todos os containers da aplicação mantendo os volumes.
+Stops all application containers while keeping the volumes.
 
 ---
 
 #### `npm run docker:restart`
 
-Reinicia todos os containers.
+Restarts all containers.
 
-Muito útil após alterações em configurações do Docker.
+Very useful after changes to Docker configuration.
 
 ---
 
 #### `npm run docker:logs`
 
-Exibe os logs de todos os serviços em tempo real.
+Displays the logs of all services in real time.
 
 ---
 
 #### `npm run docker:build`
 
-Reconstrói todas as imagens da aplicação.
+Rebuilds all application images.
 
-Utilize este comando sempre que houver alterações no `Dockerfile`.
+Use this command whenever there are changes to the `Dockerfile`.
 
 ---
 
 #### `npm run docker:clean`
 
-Remove completamente a infraestrutura Docker.
+Completely removes the Docker infrastructure.
 
-Este comando:
+This command:
 
-- encerra os containers;
-- remove os volumes;
-- remove containers órfãos.
+- stops the containers;
+- removes the volumes;
+- removes orphaned containers.
 
-> **Atenção:** todos os dados persistidos do PostgreSQL e Redis serão removidos.
+> **Warning:** all persisted PostgreSQL and Redis data will be removed.
 
 ---
 
-### Banco de Dados
+### Database
 
-Os comandos abaixo controlam apenas o PostgreSQL e o Redis.
+The commands below control only PostgreSQL and Redis.
 
 ---
 
 #### `npm run db:up`
 
-Inicializa somente os containers responsáveis pela persistência de dados.
+Starts only the containers responsible for data persistence.
 
-Serviços iniciados:
+Services started:
 
 - PostgreSQL
 - Redis
@@ -143,44 +143,44 @@ Serviços iniciados:
 
 #### `npm run db:down`
 
-Encerra apenas os serviços de banco de dados.
+Stops only the database services.
 
-A aplicação permanece inalterada.
+The application remains unaffected.
 
 ---
 
 #### `npm run db:restart`
 
-Reinicia apenas o PostgreSQL e o Redis.
+Restarts only PostgreSQL and Redis.
 
 ---
 
 #### `npm run db:logs`
 
-Exibe os logs do PostgreSQL e Redis.
+Displays the PostgreSQL and Redis logs.
 
-Ideal para depuração de problemas de conexão ou inicialização.
+Ideal for debugging connection or startup issues.
 
 ---
 
 #### `npm run db:reset`
 
-Remove completamente os volumes do banco de dados e cria uma nova instância.
+Completely removes the database volumes and creates a new instance.
 
-Fluxo executado:
+Flow executed:
 
-1. Remove containers e volumes.
-2. Inicializa PostgreSQL e Redis.
-3. O banco ficará vazio.
+1. Removes containers and volumes.
+2. Starts PostgreSQL and Redis.
+3. The database will be empty.
 
-Após executar este comando recomenda-se executar novamente:
+After running this command, it's recommended to run again:
 
 ```bash
 npm run migration:up
 npm run seed:up
 ```
 
-ou simplesmente:
+or simply:
 
 ```bash
 npm run setup
@@ -190,16 +190,16 @@ npm run setup
 
 #### `npm run redis:flush`
 
-Remove todas as chaves armazenadas no Redis.
+Removes all keys stored in Redis.
 
-Este comando é útil durante o desenvolvimento quando for necessário limpar:
+This command is useful during development when you need to clear:
 
 - cache;
-- filas;
-- sessões;
-- locks distribuídos.
+- queues;
+- sessions;
+- distributed locks.
 
-Não afeta o PostgreSQL.
+Does not affect PostgreSQL.
 
 ---
 
@@ -207,9 +207,9 @@ Não afeta o PostgreSQL.
 
 #### `npm run migration:generate`
 
-Cria uma nova migration.
+Creates a new migration.
 
-Exemplo:
+Example:
 
 ```bash
 npm run migration:generate -- create-users-table
@@ -219,21 +219,21 @@ npm run migration:generate -- create-users-table
 
 #### `npm run migration:up`
 
-Executa todas as migrations pendentes.
+Runs all pending migrations.
 
 ---
 
 #### `npm run migration:down`
 
-Desfaz a última migration executada.
+Reverts the last executed migration.
 
 ---
 
 #### `npm run migration:reset`
 
-Remove todas as migrations executadas.
+Removes all executed migrations.
 
-Normalmente utilizado apenas durante o desenvolvimento.
+Normally used only during development.
 
 ---
 
@@ -241,21 +241,21 @@ Normalmente utilizado apenas durante o desenvolvimento.
 
 #### `npm run seed:up`
 
-Executa todos os seeders.
+Runs all seeders.
 
-Utilizado para popular o banco com dados iniciais.
+Used to populate the database with initial data.
 
 ---
 
 #### `npm run seed:down`
 
-Remove todos os dados inseridos pelos seeders.
+Removes all data inserted by the seeders.
 
 ---
 
-### Fluxo recomendado
+### Recommended Workflow
 
-#### Primeira execução
+#### First run
 
 ```bash
 git clone <repository>
@@ -269,9 +269,9 @@ npm run dev
 
 ---
 
-#### Desenvolvimento diário
+#### Daily development
 
-Caso a infraestrutura já exista:
+If the infrastructure already exists:
 
 ```bash
 npm run db:up
@@ -279,7 +279,7 @@ npm run db:up
 npm run dev
 ```
 
-ou, caso toda a aplicação esteja dockerizada:
+or, if the entire application is dockerized:
 
 ```bash
 npm run docker:up
@@ -287,7 +287,7 @@ npm run docker:up
 
 ---
 
-#### Reiniciar apenas os bancos
+#### Restart only the databases
 
 ```bash
 npm run db:restart
@@ -295,7 +295,7 @@ npm run db:restart
 
 ---
 
-#### Limpar completamente o ambiente
+#### Completely clean the environment
 
 ```bash
 npm run docker:clean
