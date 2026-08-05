@@ -10,16 +10,16 @@ import {
 import { UserRole } from '../../core/domain/enums/user-role.enum';
 
 export class RegisterUserRequestDto {
-  @ApiProperty({ example: 'João Silva' })
+  @ApiProperty({ example: 'John Doe' })
   @IsString()
   @MinLength(2)
   name: string;
 
-  @ApiProperty({ example: 'joao.silva@email.com' })
+  @ApiProperty({ example: 'john.doe@email.com' })
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'Senha123' })
+  @ApiProperty({ example: 'Password123' })
   @IsString()
   @MinLength(8)
   password: string;

@@ -37,7 +37,7 @@ export class UsersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Registra um novo usuário' })
+  @ApiOperation({ summary: 'Registers a new user' })
   @ApiOkResponse({ type: UserResponseDto })
   async register(
     @Body() body: RegisterUserRequestDto,
@@ -49,7 +49,7 @@ export class UsersController {
 
   @Post('authenticate')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Autentica um usuário por e-mail e senha' })
+  @ApiOperation({ summary: 'Authenticates a user by email and password' })
   @ApiOkResponse({ type: UserResponseDto })
   async authenticate(
     @Body() body: AuthenticateUserRequestDto,
@@ -60,7 +60,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtém o perfil de um usuário' })
+  @ApiOperation({ summary: 'Gets a user profile' })
   @ApiOkResponse({ type: UserResponseDto })
   async getProfile(@Param('id') id: string): Promise<UserResponseDto> {
     const { user } = await this.getUserProfileUseCase.execute({
@@ -72,7 +72,7 @@ export class UsersController {
 
   @Patch(':id/password')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Altera a senha de um usuário' })
+  @ApiOperation({ summary: "Changes a user's password" })
   async changePassword(
     @Param('id') id: string,
     @Body() body: ChangePasswordRequestDto,
@@ -81,7 +81,7 @@ export class UsersController {
   }
 
   @Patch(':id/role')
-  @ApiOperation({ summary: 'Altera o perfil de um usuário' })
+  @ApiOperation({ summary: "Changes a user's role" })
   @ApiOkResponse({ type: UserResponseDto })
   async changeRole(
     @Param('id') id: string,

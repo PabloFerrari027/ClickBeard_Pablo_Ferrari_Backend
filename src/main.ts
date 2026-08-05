@@ -18,7 +18,7 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('ClickBeard API')
-    .setDescription('Documentação da API do sistema ClickBeard')
+    .setDescription('ClickBeard API documentation')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
