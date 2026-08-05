@@ -16,6 +16,9 @@ export class UserResponseDto {
   role: UserRole;
 
   @ApiProperty()
+  active: boolean;
+
+  @ApiProperty()
   createdAt: Date;
 
   @ApiProperty()

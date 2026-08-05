@@ -12,9 +12,11 @@ import {
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { FieldSelectionInterceptor } from '../../../../shared/presentation/interceptors/field-selection.interceptor';
+import { ActivateUserUseCase } from '../../core/application/use-cases/activate-user.use-case';
 import { AuthenticateUserUseCase } from '../../core/application/use-cases/authenticate-user.use-case';
 import { ChangePasswordUseCase } from '../../core/application/use-cases/change-password.use-case';
 import { ChangeUserRoleUseCase } from '../../core/application/use-cases/change-user-role.use-case';
+import { DeactivateUserUseCase } from '../../core/application/use-cases/deactivate-user.use-case';
 import { GetUserProfileUseCase } from '../../core/application/use-cases/get-user-profile.use-case';
 import { RegisterUserUseCase } from '../../core/application/use-cases/register-user.use-case';
 import { AuthenticateUserRequestDto } from '../dtos/authenticate-user.request.dto';
@@ -33,6 +35,8 @@ export class UsersController {
     private readonly getUserProfileUseCase: GetUserProfileUseCase,
     private readonly changePasswordUseCase: ChangePasswordUseCase,
     private readonly changeUserRoleUseCase: ChangeUserRoleUseCase,
+    private readonly deactivateUserUseCase: DeactivateUserUseCase,
+    private readonly activateUserUseCase: ActivateUserUseCase,
   ) {}
 
   @Post()
@@ -91,6 +95,26 @@ export class UsersController {
       userId: id,
       role: body.role,
     });
+
+    return user;
+  }
+
+  @Patch(':id/deactivate')
+  @ApiOperation({ summary: 'Deactivates a user' })
+  @ApiOkResponse({ type: UserResponseDto })
+  async deactivate(@Param('id') id: string): Promise<UserResponseDto> {
+    const { user } = await this.deactivateUserUseCase.execute({
+      userId: id,
+    });
+
+    return user;
+  }
+
+  @Patch(':id/activate')
+  @ApiOperation({ summary: 'Activates a user' })
+  @ApiOkResponse({ type: UserResponseDto })
+  async activate(@Param('id') id: string): Promise<UserResponseDto> {
+    const { user } = await this.activateUserUseCase.execute({ userId: id });
 
     return user;
   }
