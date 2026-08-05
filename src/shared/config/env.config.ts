@@ -9,7 +9,6 @@ import {
   validateSync,
 } from 'class-validator';
 
-// @ts-expect-error: importar process do Node para leitura das variáveis de ambiente
 import process from 'node:process';
 
 @Injectable()
