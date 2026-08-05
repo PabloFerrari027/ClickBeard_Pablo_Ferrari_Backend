@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import { AdminCannotBeDeactivatedError } from '../errors/admin-cannot-be-deactivated.error';
 import { InvalidNameError } from '../errors/invalid-name.error';
 import { SamePasswordError } from '../errors/same-password.error';
 import { SameUserRoleError } from '../errors/same-user-role.error';
+import { UserAlreadyActiveError } from '../errors/user-already-active.error';
+import { UserAlreadyDeactivatedError } from '../errors/user-already-deactivated.error';
 import { UserRole } from '../enums/user-role.enum';
 import { Email } from '../value-objects/email.value-object';
 import { Password } from '../value-objects/password.value-object';
@@ -15,6 +18,7 @@ export interface UserProps {
   email: Email;
   password: Password;
   role: UserRole;
+  active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,6 +29,7 @@ export class User {
   private email: Email;
   private password: Password;
   private role: UserRole;
+  private active: boolean;
   private readonly createdAt: Date;
   private updatedAt: Date;
 
@@ -34,6 +39,7 @@ export class User {
     this.email = props.email;
     this.password = props.password;
     this.role = props.role;
+    this.active = props.active;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
@@ -52,6 +58,7 @@ export class User {
       email: props.email,
       password: props.password,
       role: props.role ?? UserRole.CLIENT,
+      active: true,
       createdAt: now,
       updatedAt: now,
     });
@@ -89,6 +96,28 @@ export class User {
     this.touch();
   }
 
+  deactivate(): void {
+    if (this.role === UserRole.ADMIN) {
+      throw new AdminCannotBeDeactivatedError();
+    }
+
+    if (!this.active) {
+      throw new UserAlreadyDeactivatedError();
+    }
+
+    this.active = false;
+    this.touch();
+  }
+
+  activate(): void {
+    if (this.active) {
+      throw new UserAlreadyActiveError();
+    }
+
+    this.active = true;
+    this.touch();
+  }
+
   private touch(): void {
     this.updatedAt = new Date();
   }
@@ -111,6 +140,10 @@ export class User {
 
   getRole(): UserRole {
     return this.role;
+  }
+
+  isActive(): boolean {
+    return this.active;
   }
 
   getCreatedAt(): Date {
