@@ -1,5 +1,7 @@
 import { User } from '../../domain/entities/user.entity';
 
+export const USER_REPOSITORY = Symbol('UserRepository');
+
 export interface UserRepository {
   save(user: User): Promise<void>;
   findById(id: string): Promise<User | null>;
