@@ -2,6 +2,6 @@ import { DomainError } from './domain.error';
 
 export class SameUserRoleError extends DomainError {
   constructor() {
-    super('O novo perfil deve ser diferente do perfil atual.');
+    super('The new role must be different from the current role.');
   }
 }

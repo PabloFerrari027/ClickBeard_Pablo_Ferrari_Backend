@@ -2,6 +2,6 @@ import { DomainError } from './domain.error';
 
 export class SamePasswordError extends DomainError {
   constructor() {
-    super('A nova senha deve ser diferente da senha atual.');
+    super('The new password must be different from the current password.');
   }
 }
