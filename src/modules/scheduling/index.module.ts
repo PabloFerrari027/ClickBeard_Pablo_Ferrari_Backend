@@ -11,6 +11,7 @@ import { ListAvailableTimeSlotsUseCase } from './core/application/use-cases/list
 import { ListCustomerAppointmentsUseCase } from './core/application/use-cases/list-customer-appointments.use-case';
 import { ListFutureAppointmentsUseCase } from './core/application/use-cases/list-future-appointments.use-case';
 import { ListTodayAppointmentsUseCase } from './core/application/use-cases/list-today-appointments.use-case';
+import { AppointmentsController } from './presentation/controllers/appointments.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
@@ -34,6 +35,7 @@ import type { Clock } from '../../shared/application/ports/clock.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
+  controllers: [AppointmentsController],
   providers: [
     {
       provide: CreateAppointmentUseCase,
