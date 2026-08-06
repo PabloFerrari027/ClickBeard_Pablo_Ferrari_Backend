@@ -8,10 +8,20 @@ import { ListQualificationsUseCase } from './core/application/use-cases/list-qua
 import { UpdateQualificationUseCase } from './core/application/use-cases/update-qualification.use-case';
 import { QualificationsController } from './presentation/controllers/qualifications.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
+import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
+import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
+import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
+import { CacheResource } from '../../shared/application/cache/cache-resource.enum';
+import { CACHE_INVALIDATION_SERVICE } from '../../shared/application/ports/cache-invalidation-service.port';
+import { CACHE_MANAGER } from '../../shared/application/ports/cache-manager.port';
+import { CACHE_POLICY } from '../../shared/application/ports/cache-policy.port';
 
 import type { BarberRepository } from '../barber/core/application/ports/barber-repository.port';
 import type { QualificationRepository } from './core/application/ports/qualification-repository.port';
 import type { UserRepository } from '../identity/core/application/ports/user-repository.port';
+import type { CacheInvalidationService } from '../../shared/application/ports/cache-invalidation-service.port';
+import type { CacheManager } from '../../shared/application/ports/cache-manager.port';
+import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
 
 @Module({
   controllers: [QualificationsController],
@@ -21,18 +31,51 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
       useFactory: (
         qualificationRepository: QualificationRepository,
         userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new CreateQualificationUseCase(qualificationRepository, userRepository),
-      inject: [QUALIFICATION_REPOSITORY, USER_REPOSITORY],
+        new CacheInvalidatingUseCase(
+          new CreateQualificationUseCase(
+            qualificationRepository,
+            userRepository,
+          ),
+          cacheInvalidationService,
+          {
+            buildKeys: () => [CacheKeyGenerator.qualifications()],
+          },
+        ),
+      inject: [
+        QUALIFICATION_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: UpdateQualificationUseCase,
       useFactory: (
         qualificationRepository: QualificationRepository,
         userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new UpdateQualificationUseCase(qualificationRepository, userRepository),
-      inject: [QUALIFICATION_REPOSITORY, USER_REPOSITORY],
+        new CacheInvalidatingUseCase(
+          new UpdateQualificationUseCase(
+            qualificationRepository,
+            userRepository,
+          ),
+          cacheInvalidationService,
+          {
+            buildKeys: () => [CacheKeyGenerator.qualifications()],
+            // A renamed/redescribed qualification is embedded in every
+            // barber's cached response — the exact affected barbers
+            // aren't known without a lookup, so the whole list is
+            // invalidated; individual GetBarber entries fall back to TTL.
+            buildPrefixes: () => [CacheKeyGenerator.barbersListPrefix()],
+          },
+        ),
+      inject: [
+        QUALIFICATION_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: DeleteQualificationUseCase,
@@ -40,19 +83,46 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
         qualificationRepository: QualificationRepository,
         barberRepository: BarberRepository,
         userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new DeleteQualificationUseCase(
-          qualificationRepository,
-          barberRepository,
-          userRepository,
+        new CacheInvalidatingUseCase(
+          new DeleteQualificationUseCase(
+            qualificationRepository,
+            barberRepository,
+            userRepository,
+          ),
+          cacheInvalidationService,
+          {
+            // Deletion is rejected while any barber still holds the
+            // qualification, so by the time it succeeds no barber cache
+            // can be stale — only the qualifications list needs clearing.
+            buildKeys: () => [CacheKeyGenerator.qualifications()],
+          },
         ),
-      inject: [QUALIFICATION_REPOSITORY, BARBER_REPOSITORY, USER_REPOSITORY],
+      inject: [
+        QUALIFICATION_REPOSITORY,
+        BARBER_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: ListQualificationsUseCase,
-      useFactory: (qualificationRepository: QualificationRepository) =>
-        new ListQualificationsUseCase(qualificationRepository),
-      inject: [QUALIFICATION_REPOSITORY],
+      useFactory: (
+        qualificationRepository: QualificationRepository,
+        cacheManager: CacheManager,
+        cachePolicy: CachePolicy,
+      ) =>
+        new CachedUseCase(
+          new ListQualificationsUseCase(qualificationRepository),
+          cacheManager,
+          cachePolicy,
+          {
+            resource: CacheResource.QUALIFICATIONS,
+            buildKey: () => CacheKeyGenerator.qualifications(),
+          },
+        ),
+      inject: [QUALIFICATION_REPOSITORY, CACHE_MANAGER, CACHE_POLICY],
     },
   ],
 })
