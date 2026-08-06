@@ -1,10 +1,12 @@
 import { InvalidCredentialsError } from '../../domain/errors/invalid-credentials.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
+import { PasswordChangedEvent } from '../../domain/events/password-changed.event';
 import { Password } from '../../domain/value-objects/password.value-object';
 import { PlainPassword } from '../../domain/value-objects/plain-password.value-object';
 import { ChangePasswordInputDto } from '../dtos/change-password.dto';
 import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRepository } from '../ports/user-repository.port';
+import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class ChangePasswordUseCase implements UseCase<
@@ -14,6 +16,7 @@ export class ChangePasswordUseCase implements UseCase<
   constructor(
     private readonly userRepository: UserRepository,
     private readonly passwordHasher: PasswordHasher,
+    private readonly eventBus: EventBus,
   ) {}
 
   async execute(input: ChangePasswordInputDto): Promise<void> {
@@ -38,5 +41,11 @@ export class ChangePasswordUseCase implements UseCase<
     user.changePassword(Password.fromHash(hash));
 
     await this.userRepository.save(user);
+
+    await this.eventBus.publish(
+      new PasswordChangedEvent(user.getEmail().getValue(), {
+        name: user.getName(),
+      }),
+    );
   }
 }

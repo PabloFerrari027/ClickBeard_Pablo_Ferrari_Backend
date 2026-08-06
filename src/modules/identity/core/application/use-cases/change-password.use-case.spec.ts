@@ -8,11 +8,13 @@ import { Email } from '../../domain/value-objects/email.value-object';
 import { Password } from '../../domain/value-objects/password.value-object';
 import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRepository } from '../ports/user-repository.port';
+import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { ChangePasswordUseCase } from './change-password.use-case';
 
 describe('ChangePasswordUseCase', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let passwordHasher: jest.Mocked<PasswordHasher>;
+  let eventBus: jest.Mocked<EventBus>;
   let useCase: ChangePasswordUseCase;
 
   function buildUser(): User {
@@ -38,7 +40,14 @@ describe('ChangePasswordUseCase', () => {
       hash: jest.fn(),
       compare: jest.fn(),
     };
-    useCase = new ChangePasswordUseCase(userRepository, passwordHasher);
+    eventBus = {
+      publish: jest.fn(),
+    };
+    useCase = new ChangePasswordUseCase(
+      userRepository,
+      passwordHasher,
+      eventBus,
+    );
   });
 
   it('changes the password when the current password is valid and the new one is different', async () => {
@@ -60,6 +69,11 @@ describe('ChangePasswordUseCase', () => {
     expect(passwordHasher.hash).toHaveBeenCalledWith('new-password1');
     expect(user.getPassword().getHash()).toBe('new-hashed-password');
     expect(userRepository.save).toHaveBeenCalledWith(user);
+
+    expect(eventBus.publish).toHaveBeenCalledTimes(1);
+    const publishedEvent = eventBus.publish.mock.calls[0][0];
+    expect(publishedEvent.name).toBe('PasswordChanged');
+    expect(publishedEvent.recipientEmail).toBe('jane@example.com');
   });
 
   it('throws UserNotFoundError when the user does not exist', async () => {

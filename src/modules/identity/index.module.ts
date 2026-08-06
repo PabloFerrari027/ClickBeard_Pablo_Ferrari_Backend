@@ -10,9 +10,11 @@ import { DeactivateUserUseCase } from './core/application/use-cases/deactivate-u
 import { GetUserProfileUseCase } from './core/application/use-cases/get-user-profile.use-case';
 import { RegisterUserUseCase } from './core/application/use-cases/register-user.use-case';
 import { UsersController } from './presentation/controllers/users.controller';
+import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
 
 import type { PasswordHasher } from './core/application/ports/password-hasher.port';
 import type { UserRepository } from './core/application/ports/user-repository.port';
+import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
   controllers: [UsersController],
@@ -22,8 +24,9 @@ import type { UserRepository } from './core/application/ports/user-repository.po
       useFactory: (
         userRepository: UserRepository,
         passwordHasher: PasswordHasher,
-      ) => new RegisterUserUseCase(userRepository, passwordHasher),
-      inject: [USER_REPOSITORY, PASSWORD_HASHER],
+        eventBus: EventBus,
+      ) => new RegisterUserUseCase(userRepository, passwordHasher, eventBus),
+      inject: [USER_REPOSITORY, PASSWORD_HASHER, EVENT_BUS],
     },
     {
       provide: AuthenticateUserUseCase,
@@ -44,8 +47,9 @@ import type { UserRepository } from './core/application/ports/user-repository.po
       useFactory: (
         userRepository: UserRepository,
         passwordHasher: PasswordHasher,
-      ) => new ChangePasswordUseCase(userRepository, passwordHasher),
-      inject: [USER_REPOSITORY, PASSWORD_HASHER],
+        eventBus: EventBus,
+      ) => new ChangePasswordUseCase(userRepository, passwordHasher, eventBus),
+      inject: [USER_REPOSITORY, PASSWORD_HASHER, EVENT_BUS],
     },
     {
       provide: ChangeUserRoleUseCase,
