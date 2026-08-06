@@ -1,3 +1,4 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { InvalidRefreshTokenError } from '../../domain/errors/invalid-refresh-token.error';
 import { RefreshTokenExpiredError } from '../../domain/errors/refresh-token-expired.error';
 import { RefreshToken } from '../../domain/entities/refresh-token.entity';
@@ -7,7 +8,6 @@ import {
 } from '../dtos/refresh-token.dto';
 import { RefreshTokenRepository } from '../ports/refresh-token-repository.port';
 import { TokenProvider } from '../ports/token-provider.port';
-import { UserDirectory } from '../ports/user-directory.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class RefreshTokenUseCase implements UseCase<
@@ -17,7 +17,7 @@ export class RefreshTokenUseCase implements UseCase<
   constructor(
     private readonly refreshTokenRepository: RefreshTokenRepository,
     private readonly tokenProvider: TokenProvider,
-    private readonly userDirectory: UserDirectory,
+    private readonly userRepository: UserRepository,
   ) {}
 
   async execute(input: RefreshTokenInputDto): Promise<RefreshTokenOutputDto> {
@@ -45,26 +45,26 @@ export class RefreshTokenUseCase implements UseCase<
       throw new RefreshTokenExpiredError();
     }
 
-    const user = await this.userDirectory.findById(storedToken.getUserId());
+    const user = await this.userRepository.findById(storedToken.getUserId());
 
-    if (!user || !user.active) {
+    if (!user || !user.isActive()) {
       throw new InvalidRefreshTokenError();
     }
 
     const newAccessToken = await this.tokenProvider.generateAccessToken({
-      subject: user.id,
-      role: user.role,
+      subject: user.getId(),
+      role: user.getRole(),
     });
     const newRefreshToken = await this.tokenProvider.generateRefreshToken({
-      subject: user.id,
-      role: user.role,
+      subject: user.getId(),
+      role: user.getRole(),
     });
     const newRefreshTokenHash = await this.tokenProvider.hashToken(
       newRefreshToken.token,
     );
 
     const rotatedToken = RefreshToken.create({
-      userId: user.id,
+      userId: user.getId(),
       tokenHash: newRefreshTokenHash,
       expiresAt: newRefreshToken.expiresAt,
     });

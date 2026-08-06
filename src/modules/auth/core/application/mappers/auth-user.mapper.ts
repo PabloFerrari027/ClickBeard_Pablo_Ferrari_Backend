@@ -1,13 +1,11 @@
+import { User } from '../../../../identity/core/domain/entities/user.entity';
 import { AuthenticatedUserDto } from '../dtos/auth-user.dto';
-import { AuthUserSnapshot } from '../ports/user-directory.port';
 
-export function toAuthenticatedUserDto(
-  user: AuthUserSnapshot,
-): AuthenticatedUserDto {
+export function toAuthenticatedUserDto(user: User): AuthenticatedUserDto {
   return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
+    id: user.getId(),
+    name: user.getName(),
+    email: user.getEmail().getValue(),
+    role: user.getRole(),
   };
 }
