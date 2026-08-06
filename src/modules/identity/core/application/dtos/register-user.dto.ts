@@ -6,6 +6,8 @@ export interface RegisterUserInputDto {
   email: string;
   password: string;
   role?: UserRole;
+  /** Required when `role` is ADMIN — the id of the ADMIN performing the request. */
+  requesterId?: string;
 }
 
 export interface RegisterUserOutputDto {

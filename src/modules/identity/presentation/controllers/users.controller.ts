@@ -94,6 +94,7 @@ export class UsersController {
     const { user } = await this.changeUserRoleUseCase.execute({
       userId: id,
       role: body.role,
+      requesterId: body.requesterId,
     });
 
     return user;
