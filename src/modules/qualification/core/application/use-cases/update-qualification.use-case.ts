@@ -1,3 +1,4 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { QualificationAlreadyExistsError } from '../../domain/errors/qualification-already-exists.error';
 import { QualificationNotFoundError } from '../../domain/errors/qualification-not-found.error';
 import {
@@ -5,8 +6,7 @@ import {
   UpdateQualificationOutputDto,
 } from '../dtos/update-qualification.dto';
 import { toQualificationDto } from '../mappers/qualification.mapper';
-import { ensureRequesterIsAdmin } from '../../../../barber/core/application/policies/ensure-requester-is-admin.policy';
-import { UserDirectory } from '../../../../barber/core/application/ports/user-directory.port';
+import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { QualificationRepository } from '../ports/qualification-repository.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
@@ -16,13 +16,13 @@ export class UpdateQualificationUseCase implements UseCase<
 > {
   constructor(
     private readonly qualificationRepository: QualificationRepository,
-    private readonly userDirectory: UserDirectory,
+    private readonly userRepository: UserRepository,
   ) {}
 
   async execute(
     input: UpdateQualificationInputDto,
   ): Promise<UpdateQualificationOutputDto> {
-    await ensureRequesterIsAdmin(this.userDirectory, input.requesterId);
+    await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
     const qualification = await this.qualificationRepository.findById(
       input.qualificationId,

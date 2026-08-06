@@ -1,33 +1,34 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
-import { UserIsNotAdminError } from '../../../../barber/core/domain/errors/user-is-not-admin.error';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
+import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { QualificationInUseError } from '../../domain/errors/qualification-in-use.error';
 import { QualificationNotFoundError } from '../../domain/errors/qualification-not-found.error';
 import { BarberRepository } from '../../../../barber/core/application/ports/barber-repository.port';
-import {
-  UserDirectory,
-  UserSnapshot,
-} from '../../../../barber/core/application/ports/user-directory.port';
 import { Qualification } from '../../domain/entities/qualification.entity';
 import { QualificationRepository } from '../ports/qualification-repository.port';
 import { DeleteQualificationUseCase } from './delete-qualification.use-case';
 
+function buildAdmin(role: UserRole = UserRole.ADMIN): User {
+  return User.restore({
+    id: 'admin-id',
+    name: 'Admin User',
+    email: Email.create('admin-id@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role,
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+}
+
 describe('DeleteQualificationUseCase', () => {
   let qualificationRepository: jest.Mocked<QualificationRepository>;
   let barberRepository: jest.Mocked<BarberRepository>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: DeleteQualificationUseCase;
-
-  function buildAdminSnapshot(
-    overrides: Partial<UserSnapshot> = {},
-  ): UserSnapshot {
-    return {
-      id: 'admin-id',
-      name: 'Admin User',
-      role: UserRole.ADMIN,
-      active: true,
-      ...overrides,
-    };
-  }
 
   beforeEach(() => {
     qualificationRepository = {
@@ -44,18 +45,20 @@ describe('DeleteQualificationUseCase', () => {
       findAll: jest.fn(),
       existsByQualificationId: jest.fn(),
     };
-    userDirectory = {
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new DeleteQualificationUseCase(
       qualificationRepository,
       barberRepository,
-      userDirectory,
+      userRepository,
     );
   });
 
   it('deletes the qualification when it is not in use', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findById.mockResolvedValue(
       Qualification.create({ name: 'Beard Trim' }),
     );
@@ -72,9 +75,7 @@ describe('DeleteQualificationUseCase', () => {
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userDirectory.findById.mockResolvedValue(
-      buildAdminSnapshot({ role: UserRole.BARBER }),
-    );
+    userRepository.findById.mockResolvedValue(buildAdmin(UserRole.BARBER));
 
     await expect(
       useCase.execute({
@@ -86,7 +87,7 @@ describe('DeleteQualificationUseCase', () => {
   });
 
   it('throws QualificationNotFoundError when the qualification does not exist', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findById.mockResolvedValue(null);
 
     await expect(
@@ -99,7 +100,7 @@ describe('DeleteQualificationUseCase', () => {
   });
 
   it('throws QualificationInUseError when a barber is assigned to the qualification', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findById.mockResolvedValue(
       Qualification.create({ name: 'Beard Trim' }),
     );
