@@ -8,11 +8,13 @@ import { Email } from '../../domain/value-objects/email.value-object';
 import { Password } from '../../domain/value-objects/password.value-object';
 import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRepository } from '../ports/user-repository.port';
+import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { RegisterUserUseCase } from './register-user.use-case';
 
 describe('RegisterUserUseCase', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let passwordHasher: jest.Mocked<PasswordHasher>;
+  let eventBus: jest.Mocked<EventBus>;
   let useCase: RegisterUserUseCase;
 
   beforeEach(() => {
@@ -25,7 +27,10 @@ describe('RegisterUserUseCase', () => {
       hash: jest.fn(),
       compare: jest.fn(),
     };
-    useCase = new RegisterUserUseCase(userRepository, passwordHasher);
+    eventBus = {
+      publish: jest.fn(),
+    };
+    useCase = new RegisterUserUseCase(userRepository, passwordHasher, eventBus);
   });
 
   it('registers a new user with the default CLIENT role', async () => {
@@ -55,6 +60,12 @@ describe('RegisterUserUseCase', () => {
       createdAt: savedUser.getCreatedAt(),
       updatedAt: savedUser.getUpdatedAt(),
     });
+
+    expect(eventBus.publish).toHaveBeenCalledTimes(1);
+    const publishedEvent = eventBus.publish.mock.calls[0][0];
+    expect(publishedEvent.name).toBe('UserRegistered');
+    expect(publishedEvent.recipientEmail).toBe('jane@example.com');
+    expect(publishedEvent.payload).toEqual({ name: 'Jane Doe' });
   });
 
   it('registers a new user with an explicit valid role', async () => {
@@ -109,6 +120,7 @@ describe('RegisterUserUseCase', () => {
 
     expect(passwordHasher.hash).not.toHaveBeenCalled();
     expect(userRepository.save).not.toHaveBeenCalled();
+    expect(eventBus.publish).not.toHaveBeenCalled();
   });
 
   it('propagates WeakPasswordError from the domain when the password is weak', async () => {
