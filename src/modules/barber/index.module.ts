@@ -1,6 +1,8 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { SequelizeModule } from '@nestjs/sequelize';
 
 import { QUALIFICATION_REPOSITORY } from '../qualification/core/application/ports/qualification-repository.port';
+import { QualificationModule } from '../qualification/index.module';
 import { BARBER_REPOSITORY } from './core/application/ports/barber-repository.port';
 import { AddQualificationToBarberUseCase } from './core/application/use-cases/add-qualification-to-barber.use-case';
 import { CreateBarberUseCase } from './core/application/use-cases/create-barber.use-case';
@@ -8,8 +10,12 @@ import { GetBarberUseCase } from './core/application/use-cases/get-barber.use-ca
 import { ListBarbersUseCase } from './core/application/use-cases/list-barbers.use-case';
 import { RemoveQualificationFromBarberUseCase } from './core/application/use-cases/remove-qualification-from-barber.use-case';
 import { UpdateBarberUseCase } from './core/application/use-cases/update-barber.use-case';
+import { BarberQualificationModel } from './infrastructure/persistence/models/barber-qualification.model';
+import { BarberModel } from './infrastructure/persistence/models/barber.model';
+import { SequelizeBarberRepository } from './infrastructure/persistence/repositories/sequelize-barber.repository';
 import { BarbersController } from './presentation/controllers/barbers.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
+import { IdentityModule } from '../identity/index.module';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
 import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
@@ -26,8 +32,14 @@ import type { CacheManager } from '../../shared/application/ports/cache-manager.
 import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
 
 @Module({
+  imports: [
+    IdentityModule,
+    SequelizeModule.forFeature([BarberModel, BarberQualificationModel]),
+    forwardRef(() => QualificationModule),
+  ],
   controllers: [BarbersController],
   providers: [
+    { provide: BARBER_REPOSITORY, useClass: SequelizeBarberRepository },
     {
       provide: CreateBarberUseCase,
       useFactory: (
@@ -180,5 +192,6 @@ import type { CachePolicy } from '../../shared/application/ports/cache-policy.po
       ],
     },
   ],
+  exports: [BARBER_REPOSITORY],
 })
 export class BarberModule {}
