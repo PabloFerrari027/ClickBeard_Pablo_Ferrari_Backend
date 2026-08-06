@@ -11,7 +11,7 @@ src/
 ├── main.ts                          # Application bootstrap, global ValidationPipe and Swagger configuration
 ├── app.module.ts                    # Root, global module
 ├── modules/
-│   ├── auth/                        # Authentication: login, refresh/rotate and revoke sessions — Core only, no infra yet
+│   ├── auth/                        # Authentication: login, refresh/rotate and revoke sessions
 │   │   ├── core/
 │   │   │   ├── domain/
 │   │   │   │   ├── entities/        # RefreshToken
@@ -23,6 +23,8 @@ src/
 │   │   │       ├── ports/           # UserDirectory, TokenProvider, RefreshTokenRepository
 │   │   │       │                    # (reuses Identity's PasswordHasher directly instead of redefining it)
 │   │   │       └── use-cases/       # Login, RefreshToken, Logout
+│   │   ├── infrastructure/
+│   │   │   └── persistence/         # RefreshTokenModel (Sequelize), mapper, SequelizeRefreshTokenRepository
 │   │   └── index.module.ts          # AuthModule wiring
 │   │
 │   ├── identity/                    # Users: registration, authentication, roles, activation
@@ -39,6 +41,8 @@ src/
 │   │   │       ├── ports/           # UserRepository, PasswordHasher
 │   │   │       └── use-cases/       # RegisterUser, AuthenticateUser, GetUserProfile,
 │   │   │                            # ChangePassword, ChangeUserRole, ActivateUser, DeactivateUser
+│   │   ├── infrastructure/
+│   │   │   └── persistence/         # UserModel (Sequelize), mapper, SequelizeUserRepository
 │   │   ├── presentation/
 │   │   │   ├── controllers/         # UsersController (/users)
 │   │   │   └── dtos/                # *.request.dto.ts / *.response.dto.ts (class-validator + Swagger)
@@ -57,6 +61,9 @@ src/
 │   │   │       ├── ports/           # BarberRepository, UserDirectory (read-only view into Identity)
 │   │   │       └── use-cases/       # CreateBarber, UpdateBarber, GetBarber, ListBarbers,
 │   │   │                            # AddQualificationToBarber, RemoveQualificationFromBarber
+│   │   ├── infrastructure/
+│   │   │   └── persistence/         # BarberModel, BarberQualificationModel (the join table backing
+│   │   │                            # qualificationIds), mapper, SequelizeBarberRepository
 │   │   ├── presentation/
 │   │   │   ├── controllers/         # BarbersController (/barbers)
 │   │   │   └── dtos/
@@ -73,6 +80,8 @@ src/
 │   │   │       ├── ports/           # QualificationRepository
 │   │   │       └── use-cases/       # CreateQualification, UpdateQualification,
 │   │   │                            # DeleteQualification, ListQualifications
+│   │   ├── infrastructure/
+│   │   │   └── persistence/         # QualificationModel, mapper, SequelizeQualificationRepository
 │   │   ├── presentation/
 │   │   │   ├── controllers/         # QualificationsController (/qualifications)
 │   │   │   └── dtos/
@@ -91,6 +100,8 @@ src/
 │   │   │       └── use-cases/       # GenerateVerificationCode, ResendVerificationCode,
 │   │   │                            # ValidateVerificationCode, InvalidateExpiredVerificationCodes,
 │   │   │                            # CompleteAuthentication
+│   │   ├── infrastructure/
+│   │   │   └── persistence/         # VerificationCodeModel, mapper, SequelizeVerificationCodeRepository
 │   │   └── index.module.ts          # AccountVerificationModule wiring
 │   │
 │   ├── notification/                # Generic event -> notification pipeline, reused by every notification
@@ -119,6 +130,11 @@ src/
 │   │   │       └── use-cases/       # CreateAppointment, CancelAppointment, GetAppointment,
 │   │   │                            # ListCustomerAppointments, ListTodayAppointments,
 │   │   │                            # ListFutureAppointments, ListAvailableTimeSlots
+│   │   ├── infrastructure/
+│   │   │   └── persistence/         # AppointmentModel, mapper, SequelizeAppointmentRepository,
+│   │   │                            # SequelizeTransactionManager, SequelizeAvailabilityService,
+│   │   │                            # SequelizeBarberDirectoryService (raw SQL over barbers/users/
+│   │   │                            # barbers_qualifications by table name — no cross-module model import)
 │   │   ├── presentation/
 │   │   │   ├── controllers/         # AppointmentsController (/appointments)
 │   │   │   └── dtos/
@@ -153,8 +169,10 @@ src/
     │                                # CachedUseCase / CacheInvalidatingUseCase decorators (see Caching below)
     ├── domain/
     │   └── events/                  # DomainEvent<Payload> — the shape every module's events implement
-    ├── config/                      # Environment, Postgres, Redis and queue configuration
-    ├── database/                    # PostgreSQL integration via Sequelize
+    ├── config/                      # EnvConfig, PgConfig, SequelizeConfig (Postgres/Redis/queue settings)
+    ├── database/                    # PgModule (Sequelize connection + boot-time health check),
+    │                                 # TransactionContext (AsyncLocalStorage), persistence error
+    │                                 # hierarchy and Sequelize error mapping — see Persistence below
     ├── presentation/
     │   └── interceptors/            # FieldSelectionInterceptor (sparse fieldsets via ?fields=)
     └── queue/                       # Queue integration via BullMQ/Redis
@@ -162,7 +180,7 @@ src/
 
 - Each business domain (`auth`, `identity`, `barber`, `qualification`, `account-verification`, `notification`, `scheduling`, `analytics`) lives in its own module under `src/modules`, keeping the code isolated and easy to evolve independently. `barber` and `qualification` were deliberately split into separate modules — a barber profile and the qualification catalog are distinct bounded contexts that happen to reference each other (a barber holds qualification ids; deleting a qualification checks whether any barber still uses it), so each module's use cases reach into the other's ports via plain relative imports rather than merging the two domains. `auth` and `account-verification` follow the same pattern for the user identity they need: instead of depending on Identity's `User` entity, each defines its own decoupled `UserDirectory` port and snapshot type, while still literally reusing Identity's `PasswordHasher` port (a technology-agnostic hash/compare contract, not a domain concept) for both passwords and verification codes. `analytics` takes the same isolation principle further still: it owns no data of its own at all, so instead of reaching into another module's repository or entities it defines its own narrow, read-only ports (`UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`) scoped to exactly the aggregates a dashboard needs, never duplicating another module's business rules.
 - `src/shared` concentrates cross-cutting integrations and configuration reused across domain modules: validated environment variables (`class-validator`), PostgreSQL connection (Sequelize), asynchronous queues with Redis (BullMQ), the generic `UseCase` contract every use case implements, the cache-aside/invalidation primitives every cached use case is wrapped with (`CacheManager`, `CachePolicy`, `CacheInvalidationService`, `CacheKeyGenerator`, `CachedUseCase`/`CacheInvalidatingUseCase` — see [Caching](#caching) below), the `DomainEvent`/`EventBus`/`MessageQueue`/`Clock` primitives every module's event publishing builds on (see [Event-driven notifications](#event-driven-notifications) below), and the `FieldSelectionInterceptor` presentation interceptor (see [API conventions](#api-conventions) below).
-- Domain and application layers have no dependency on NestJS or any infrastructure package — controllers depend on use cases, use cases depend on port interfaces, and (once written) infrastructure adapters implement those ports. No persistence, queue, cache or email adapters exist yet, so every port defined so far (`UserRepository`, `PasswordHasher`, `BarberRepository`, `QualificationRepository`, `UserDirectory`, `TokenProvider`, `RefreshTokenRepository`, `EventBus`, `MessageQueue`, `Clock`, `VerificationCodeRepository`, `VerificationCodeGenerator`, `SessionManager`, `LanguageResolver`, `MessageTemplateProvider`, `NotificationSender`, `AppointmentRepository`, `AvailabilityService`, `BarberDirectory`, `TransactionManager`, `UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`, `AnalyticsRepository`, `CacheManager`, `CachePolicy`, `CacheInvalidationService`) is defined but not yet bound to a concrete implementation.
+- Domain and application layers have no dependency on NestJS or any infrastructure package — controllers depend on use cases, use cases depend on port interfaces, and infrastructure adapters implement those ports. Persistence is the first infrastructure layer to land (see [Persistence](#persistence) below): `UserRepository`, `RefreshTokenRepository`, `BarberRepository`, `QualificationRepository`, `VerificationCodeRepository`, `AppointmentRepository`, `TransactionManager`, `AvailabilityService` and `BarberDirectory` are all bound to Sequelize/Postgres adapters. Queue, cache and email adapters don't exist yet, so every remaining port (`PasswordHasher`, `TokenProvider`, `EventBus`, `MessageQueue`, `Clock`, `VerificationCodeGenerator`, `SessionManager`, `LanguageResolver`, `MessageTemplateProvider`, `NotificationSender`, `UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`, `AnalyticsRepository`, `CacheManager`, `CachePolicy`, `CacheInvalidationService`) is still defined but not yet bound to a concrete implementation — so `AppModule` still only wires `DatabaseModule` in, not any domain module.
 - Supporting infrastructure (PostgreSQL, Redis and, optionally, the application itself) runs in Docker containers, orchestrated by `docker-compose.yml`.
 - Interactive API documentation is generated automatically by Swagger and is available at `/docs` while the application is running.
 
@@ -170,6 +188,29 @@ src/
 
 - **Sparse fieldsets**: any endpoint on a controller decorated with `FieldSelectionInterceptor` accepts a `?fields=a,b,c` query parameter to return only the requested top-level response fields (e.g. `GET /barbers/:id?fields=id,name`). Every controller in this project uses it.
 - **Authorization**: every protected route is guarded via the composed `@Auth(...roles)` / `@SelfOrAdmin()` decorators (`auth` module, `presentation/decorators`). `AccessTokenGuard` validates the bearer access token and attaches the caller's id and **current** role to the request; `RolesGuard` enforces an optional role allow-list (no roles means any authenticated user); `SelfOrAdminGuard` allows a route for the resource's own owner or an `ADMIN`. Use cases still receive the acting user's id (`requesterId`/`userId`), but controllers now source it from the verified token via `@CurrentUser()` instead of trusting it from the request body. Every admin-only use case also re-checks the role itself via the `ensureRequesterIsAdmin` policy, so the rule holds even if a use case is ever invoked outside its guarded route — e.g. `GetAppointmentUseCase`'s ownership check runs inside the use case regardless of the controller's own `@Auth()` guard.
+
+## Persistence
+
+Every repository/service port that reads or writes data is backed by a Sequelize (Postgres) adapter living in that module's own `infrastructure/persistence`. Use cases never see Sequelize: they depend on the port interface, `index.module.ts` binds the port token to the adapter (`{ provide: USER_REPOSITORY, useClass: SequelizeUserRepository }`), and the adapter is the only place a Sequelize model or query is ever mentioned.
+
+```text
+Use Case ──depends on──► Repository Port (interface) ◄──implements── SequelizeXRepository ──queries──► Postgres
+                                                              │
+                                                              ▼
+                                                     XModel (sequelize-typescript)
+                                                              │
+                                                              ▼
+                                                     Mapper: Model <-> Domain Entity
+```
+
+- **Connection**: `PgConfig`/`SequelizeConfig` (`shared/config`) build the connection options from `EnvConfig` — host/port/credentials, a configurable pool (`DB_POOL_MAX/MIN/IDLE_MS/ACQUIRE_MS`), optional SSL (`DB_SSL`, for managed Postgres in production), and SQL logging only in `development`. `PgModule` (`shared/database/pg`) opens that connection via `SequelizeModule.forRootAsync`, and `PgConnectionChecker` fails fast at boot with a clear log line if Postgres is unreachable instead of surfacing a confusing error on the first query. `DatabaseModule` (`@Global()`) wraps `PgModule` and is the one thing `AppModule` imports — every domain module's own `SequelizeModule.forFeature([...])` resolves against that single connection without importing `DatabaseModule` itself.
+- **Migrations own the schema** — the app connects with `synchronize: false` and never creates or alters a table at runtime. `database/migrations` (plain JS, run by `sequelize-cli` via `.sequelizerc` / `database/config/config.js`, deliberately outside `src` so they're independent of the app's TS build) hand-write every table, constraint, foreign key and index — including a **partial unique index** on `appointments (barber_id, start_at) WHERE status = 'SCHEDULED'`, which is the actual guarantee against double-booking a barber, not just `CreateAppointmentUseCase`'s own pre-check. See [Migrations](#migrations) below for the scripts.
+- **Models** (`sequelize-typescript`, one per module) map 1:1 to a table and know nothing about domain rules — they're plain attribute bags. `Barber`'s and `Qualification`'s many-to-many (`barbers_qualifications`) lives in the Barber module (it's `Barber.qualificationIds` that's the domain concept), with a composite primary key doubling as the "no duplicate assignment" constraint.
+- **Mappers** (`toXDomain` / `toXPersistence`, one file per aggregate) are the only code that converts between a model's plain attributes and a domain entity's private constructor + value objects (`Email.create`, `Password.fromHash`, `Age.create`, `TimeSlot.create`, ...) — no controller, use case or model ever crosses that boundary itself.
+- **Cross-module reads stay decoupled at the infrastructure layer too**, mirroring the application-layer isolation described above: `SequelizeQualificationRepository.listByBarberId` and Scheduling's `SequelizeBarberDirectoryService` (which resolves a barber's active flag from Identity's `users` table and its qualifications from Barber's join table) query those other modules' tables by literal table name via a raw parameterized query, instead of importing their Sequelize model classes. Only within a module's own persistence code are models used directly.
+- **Transactions**: `TransactionContext` (`shared/database`, backed by `AsyncLocalStorage`) makes the transaction started by `SequelizeTransactionManager.runInTransaction` ambiently available to every repository call further down the same async call stack — `TransactionManager`'s port signature takes a plain `() => Promise<T>` callback with no transaction parameter, so this is what lets `CreateAppointmentUseCase`'s availability check and save happen atomically without threading a `Transaction` object through an application-layer port. `TransactionContext.runAtomic` is the same mechanism for an adapter whose own single port method (`BarberRepository.save`, upserting the barber row and syncing its qualification links) must be atomic even when nothing above it opened a transaction — it joins one if it's already running, or opens its own otherwise.
+- **Error mapping**: every adapter method translates Sequelize's error into either the module's own domain error (a unique violation on `users.email` → `UserAlreadyExistsError`, on the appointments partial index → `BarberTimeSlotConflictError`, a foreign key violation while deleting a qualification still in use → `QualificationInUseError`, ...) or, for connection/timeout/deadlock/anything unexpected, one of the four `PersistenceError` subclasses in `shared/database/errors` — so no SQL text or driver error shape ever reaches the application layer. `isUniqueConstraintError`/`isForeignKeyConstraintError`/`isConnectionError`/`isTimeoutError`/`isDeadlockError` (`shared/database/sequelize-error.helpers.ts`) are the shared type guards every adapter's `catch` block is built from.
+- Every repository, model and mapper listed above was exercised against a real Postgres instance (`docker compose up postgres`, migrations applied) while building it, including the double-booking conflict, the rebooking-after-cancellation path, and the barber/qualification join sync — not just type-checked.
 
 ## Event-driven notifications
 
@@ -494,6 +535,12 @@ Reverts the last executed migration.
 Removes all executed migrations.
 
 Normally used only during development.
+
+---
+
+#### `npm run migration:status`
+
+Lists every migration and whether it's currently applied (`up`) or not (`down`).
 
 ---
 
