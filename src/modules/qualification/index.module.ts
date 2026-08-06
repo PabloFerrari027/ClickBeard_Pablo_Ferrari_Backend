@@ -1,13 +1,18 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { SequelizeModule } from '@nestjs/sequelize';
 
 import { BARBER_REPOSITORY } from '../barber/core/application/ports/barber-repository.port';
+import { BarberModule } from '../barber/index.module';
 import { QUALIFICATION_REPOSITORY } from './core/application/ports/qualification-repository.port';
 import { CreateQualificationUseCase } from './core/application/use-cases/create-qualification.use-case';
 import { DeleteQualificationUseCase } from './core/application/use-cases/delete-qualification.use-case';
 import { ListQualificationsUseCase } from './core/application/use-cases/list-qualifications.use-case';
 import { UpdateQualificationUseCase } from './core/application/use-cases/update-qualification.use-case';
+import { QualificationModel } from './infrastructure/persistence/models/qualification.model';
+import { SequelizeQualificationRepository } from './infrastructure/persistence/repositories/sequelize-qualification.repository';
 import { QualificationsController } from './presentation/controllers/qualifications.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
+import { IdentityModule } from '../identity/index.module';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
 import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
@@ -24,8 +29,17 @@ import type { CacheManager } from '../../shared/application/ports/cache-manager.
 import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
 
 @Module({
+  imports: [
+    IdentityModule,
+    SequelizeModule.forFeature([QualificationModel]),
+    forwardRef(() => BarberModule),
+  ],
   controllers: [QualificationsController],
   providers: [
+    {
+      provide: QUALIFICATION_REPOSITORY,
+      useClass: SequelizeQualificationRepository,
+    },
     {
       provide: CreateQualificationUseCase,
       useFactory: (
@@ -125,5 +139,6 @@ import type { CachePolicy } from '../../shared/application/ports/cache-policy.po
       inject: [QUALIFICATION_REPOSITORY, CACHE_MANAGER, CACHE_POLICY],
     },
   ],
+  exports: [QUALIFICATION_REPOSITORY],
 })
 export class QualificationModule {}
