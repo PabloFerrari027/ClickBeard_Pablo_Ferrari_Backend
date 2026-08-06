@@ -11,7 +11,12 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Auth } from '../../../auth/presentation/decorators/auth.decorator';
+import { CurrentUser } from '../../../auth/presentation/decorators/current-user.decorator';
+import { SelfOrAdmin } from '../../../auth/presentation/decorators/self-or-admin.decorator';
+import type { AuthenticatedRequestUser } from '../../../auth/presentation/types/authenticated-request-user';
 import { FieldSelectionInterceptor } from '../../../../shared/presentation/interceptors/field-selection.interceptor';
+import { UserRole } from '../../core/domain/enums/user-role.enum';
 import { ActivateUserUseCase } from '../../core/application/use-cases/activate-user.use-case';
 import { AuthenticateUserUseCase } from '../../core/application/use-cases/authenticate-user.use-case';
 import { ChangePasswordUseCase } from '../../core/application/use-cases/change-password.use-case';
@@ -41,7 +46,10 @@ export class UsersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Registers a new user' })
+  @ApiOperation({
+    summary:
+      'Registers a new user. Open to anyone for CLIENT/BARBER; creating an ADMIN requires requesterId to belong to an existing admin (enforced in Core, no session exists yet at this point so this route stays public)',
+  })
   @ApiOkResponse({ type: UserResponseDto })
   async register(
     @Body() body: RegisterUserRequestDto,
@@ -64,6 +72,7 @@ export class UsersController {
   }
 
   @Get(':id')
+  @SelfOrAdmin()
   @ApiOperation({ summary: 'Gets a user profile' })
   @ApiOkResponse({ type: UserResponseDto })
   async getProfile(@Param('id') id: string): Promise<UserResponseDto> {
@@ -75,6 +84,7 @@ export class UsersController {
   }
 
   @Patch(':id/password')
+  @SelfOrAdmin()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Changes a user's password" })
   async changePassword(
@@ -85,22 +95,25 @@ export class UsersController {
   }
 
   @Patch(':id/role')
+  @Auth(UserRole.ADMIN)
   @ApiOperation({ summary: "Changes a user's role" })
   @ApiOkResponse({ type: UserResponseDto })
   async changeRole(
     @Param('id') id: string,
     @Body() body: ChangeUserRoleRequestDto,
+    @CurrentUser() requester: AuthenticatedRequestUser,
   ): Promise<UserResponseDto> {
     const { user } = await this.changeUserRoleUseCase.execute({
       userId: id,
       role: body.role,
-      requesterId: body.requesterId,
+      requesterId: requester.id,
     });
 
     return user;
   }
 
   @Patch(':id/deactivate')
+  @Auth(UserRole.ADMIN)
   @ApiOperation({ summary: 'Deactivates a user' })
   @ApiOkResponse({ type: UserResponseDto })
   async deactivate(@Param('id') id: string): Promise<UserResponseDto> {
@@ -112,6 +125,7 @@ export class UsersController {
   }
 
   @Patch(':id/activate')
+  @Auth(UserRole.ADMIN)
   @ApiOperation({ summary: 'Activates a user' })
   @ApiOkResponse({ type: UserResponseDto })
   async activate(@Param('id') id: string): Promise<UserResponseDto> {

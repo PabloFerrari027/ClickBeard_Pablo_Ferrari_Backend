@@ -9,10 +9,6 @@ import {
 } from 'class-validator';
 
 export class CreateBarberRequestDto {
-  @ApiProperty({ description: 'Id of the admin performing the request' })
-  @IsUUID()
-  requesterId: string;
-
   @ApiProperty({ description: 'Id of the identity user becoming a barber' })
   @IsUUID()
   userId: string;

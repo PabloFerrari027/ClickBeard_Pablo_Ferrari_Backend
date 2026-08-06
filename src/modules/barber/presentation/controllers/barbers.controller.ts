@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Auth } from '../../../auth/presentation/decorators/auth.decorator';
+import { CurrentUser } from '../../../auth/presentation/decorators/current-user.decorator';
+import type { AuthenticatedRequestUser } from '../../../auth/presentation/types/authenticated-request-user';
 import { FieldSelectionInterceptor } from '../../../../shared/presentation/interceptors/field-selection.interceptor';
+import { UserRole } from '../../../identity/core/domain/enums/user-role.enum';
 import { AddQualificationToBarberUseCase } from '../../core/application/use-cases/add-qualification-to-barber.use-case';
 import { CreateBarberUseCase } from '../../core/application/use-cases/create-barber.use-case';
 import { GetBarberUseCase } from '../../core/application/use-cases/get-barber.use-case';
@@ -24,7 +28,6 @@ import { AddQualificationToBarberRequestDto } from '../dtos/add-qualification-to
 import { BarberResponseDto } from '../dtos/barber.response.dto';
 import { CreateBarberRequestDto } from '../dtos/create-barber.request.dto';
 import { ListBarbersResponseDto } from '../dtos/list-barbers.response.dto';
-import { RemoveQualificationFromBarberRequestDto } from '../dtos/remove-qualification-from-barber.request.dto';
 import { UpdateBarberRequestDto } from '../dtos/update-barber.request.dto';
 
 @ApiTags('Barbers')
@@ -41,20 +44,24 @@ export class BarbersController {
   ) {}
 
   @Post()
+  @Auth(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Creates a barber profile for an identity user' })
   @ApiOkResponse({ type: BarberResponseDto })
   async create(
     @Body() body: CreateBarberRequestDto,
+    @CurrentUser() requester: AuthenticatedRequestUser,
   ): Promise<BarberResponseDto> {
     const { barber } = await this.createBarberUseCase.execute({
       ...body,
       hiredAt: new Date(body.hiredAt),
+      requesterId: requester.id,
     });
     return barber;
   }
 
   @Get()
+  @Auth()
   @ApiOperation({ summary: 'Lists barbers' })
   @ApiOkResponse({ type: ListBarbersResponseDto })
   async list(@Query('page') page?: string): Promise<ListBarbersResponseDto> {
@@ -64,6 +71,7 @@ export class BarbersController {
   }
 
   @Get(':id')
+  @Auth()
   @ApiOperation({ summary: 'Gets a barber by id' })
   @ApiOkResponse({ type: BarberResponseDto })
   async getById(@Param('id') id: string): Promise<BarberResponseDto> {
@@ -72,6 +80,7 @@ export class BarbersController {
   }
 
   @Patch(':id')
+  @Auth(UserRole.ADMIN)
   @ApiOperation({ summary: 'Updates a barber' })
   @ApiOkResponse({ type: BarberResponseDto })
   async update(
@@ -87,31 +96,35 @@ export class BarbersController {
   }
 
   @Post(':id/qualifications')
+  @Auth(UserRole.ADMIN)
   @ApiOperation({ summary: 'Adds a qualification to a barber' })
   @ApiOkResponse({ type: BarberResponseDto })
   async addQualification(
     @Param('id') id: string,
     @Body() body: AddQualificationToBarberRequestDto,
+    @CurrentUser() requester: AuthenticatedRequestUser,
   ): Promise<BarberResponseDto> {
     const { barber } = await this.addQualificationToBarberUseCase.execute({
       barberId: id,
-      ...body,
+      qualificationId: body.qualificationId,
+      requesterId: requester.id,
     });
     return barber;
   }
 
   @Delete(':id/qualifications/:qualificationId')
+  @Auth(UserRole.ADMIN)
   @ApiOperation({ summary: 'Removes a qualification from a barber' })
   @ApiOkResponse({ type: BarberResponseDto })
   async removeQualification(
     @Param('id') id: string,
     @Param('qualificationId') qualificationId: string,
-    @Body() body: RemoveQualificationFromBarberRequestDto,
+    @CurrentUser() requester: AuthenticatedRequestUser,
   ): Promise<BarberResponseDto> {
     const { barber } = await this.removeQualificationFromBarberUseCase.execute({
       barberId: id,
       qualificationId,
-      ...body,
+      requesterId: requester.id,
     });
     return barber;
   }
