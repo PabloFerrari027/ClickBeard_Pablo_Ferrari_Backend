@@ -11,6 +11,7 @@ import { VERIFICATION_CODE_GENERATOR } from './core/application/ports/verificati
 import { VERIFICATION_CODE_REPOSITORY } from './core/application/ports/verification-code-repository.port';
 import { CLOCK } from '../../shared/application/ports/clock.port';
 import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
+import { AccountVerificationController } from './presentation/controllers/account-verification.controller';
 
 import type { PasswordHasher } from '../identity/core/application/ports/password-hasher.port';
 import type { SessionManager } from './core/application/ports/session-manager.port';
@@ -20,6 +21,7 @@ import type { Clock } from '../../shared/application/ports/clock.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
+  controllers: [AccountVerificationController],
   providers: [
     {
       provide: GenerateVerificationCodeUseCase,
