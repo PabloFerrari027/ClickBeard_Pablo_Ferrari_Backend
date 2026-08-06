@@ -12,7 +12,9 @@ import { UserModel } from '../models/user.model';
 
 @Injectable()
 export class SequelizeUserRepository implements UserRepository {
-  constructor(@InjectModel(UserModel) private readonly userModel: typeof UserModel) {}
+  constructor(
+    @InjectModel(UserModel) private readonly userModel: typeof UserModel,
+  ) {}
 
   async save(user: User): Promise<void> {
     try {

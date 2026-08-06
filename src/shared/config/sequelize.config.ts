@@ -36,9 +36,15 @@ export class SequelizeConfig {
       dialectOptions: ssl
         ? { ssl: { require: true, rejectUnauthorized: false } }
         : {},
-      // Migrations own the schema; the app never creates or alters tables.
+      // `autoLoadModels: true` is what makes @nestjs/sequelize actually
+      // bind every `SequelizeModule.forFeature([...])`-registered model
+      // to this connection — without it, `@InjectModel()` resolves to
+      // an uninitialized model class. `synchronize: false` is the part
+      // that keeps schema ownership with migrations: it stops Sequelize
+      // from following that model-loading step with its own `sync()`
+      // (auto create/alter tables), which migrations must own instead.
       synchronize: false,
-      autoLoadModels: false,
+      autoLoadModels: true,
       logging: this.buildLogger(),
       retryAttempts: CONNECTION_RETRY_ATTEMPTS,
       retryDelay: CONNECTION_RETRY_DELAY_MS,

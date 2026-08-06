@@ -52,9 +52,7 @@ export class EnvConfig {
 
   @IsInt()
   @Min(1)
-  private readonly DB_POOL_MAX: number = Number(
-    process.env.DB_POOL_MAX ?? 10,
-  );
+  private readonly DB_POOL_MAX: number = Number(process.env.DB_POOL_MAX ?? 10);
 
   @IsInt()
   @Min(0)
