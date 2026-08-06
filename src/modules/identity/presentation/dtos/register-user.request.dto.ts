@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
 
@@ -28,4 +29,12 @@ export class RegisterUserRequestDto {
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
+
+  @ApiPropertyOptional({
+    description:
+      'Id of the admin performing the request — required when role is ADMIN',
+  })
+  @IsOptional()
+  @IsUUID()
+  requesterId?: string;
 }
