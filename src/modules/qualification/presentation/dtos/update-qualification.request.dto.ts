@@ -1,13 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateQualificationRequestDto {
-  @ApiPropertyOptional({
-    description: 'Id of the admin performing the request',
-  })
-  @IsUUID()
-  requesterId: string;
-
   @ApiPropertyOptional({ example: 'Fade Cut' })
   @IsOptional()
   @IsString()
