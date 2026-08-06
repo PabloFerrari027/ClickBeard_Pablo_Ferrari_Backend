@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { Transaction } from 'sequelize';
+import { Sequelize, Transaction } from 'sequelize';
 
 /**
  * Makes the transaction started by a `TransactionManager` adapter
@@ -20,5 +20,28 @@ export class TransactionContext {
 
   static current(): Transaction | undefined {
     return this.storage.getStore();
+  }
+
+  /**
+   * For adapters whose own port method spans more than one statement
+   * (e.g. `BarberRepository.save` upserting the barber row and syncing
+   * its qualification links) and must run atomically even though
+   * nothing above them called `TransactionManager.runInTransaction`.
+   * Joins the ambient transaction if one is already running instead of
+   * nesting a second one.
+   */
+  static async runAtomic<T>(
+    sequelize: Sequelize,
+    work: (transaction: Transaction) => Promise<T>,
+  ): Promise<T> {
+    const existing = this.current();
+
+    if (existing) {
+      return work(existing);
+    }
+
+    return sequelize.transaction((transaction) =>
+      this.run(transaction, () => work(transaction)),
+    );
   }
 }
