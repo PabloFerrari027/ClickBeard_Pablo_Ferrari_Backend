@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 
 import { QUALIFICATION_REPOSITORY } from '../qualification/core/application/ports/qualification-repository.port';
 import { BARBER_REPOSITORY } from './core/application/ports/barber-repository.port';
-import { USER_DIRECTORY } from './core/application/ports/user-directory.port';
 import { AddQualificationToBarberUseCase } from './core/application/use-cases/add-qualification-to-barber.use-case';
 import { CreateBarberUseCase } from './core/application/use-cases/create-barber.use-case';
 import { GetBarberUseCase } from './core/application/use-cases/get-barber.use-case';
@@ -10,10 +9,11 @@ import { ListBarbersUseCase } from './core/application/use-cases/list-barbers.us
 import { RemoveQualificationFromBarberUseCase } from './core/application/use-cases/remove-qualification-from-barber.use-case';
 import { UpdateBarberUseCase } from './core/application/use-cases/update-barber.use-case';
 import { BarbersController } from './presentation/controllers/barbers.controller';
+import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 
 import type { QualificationRepository } from '../qualification/core/application/ports/qualification-repository.port';
 import type { BarberRepository } from './core/application/ports/barber-repository.port';
-import type { UserDirectory } from './core/application/ports/user-directory.port';
+import type { UserRepository } from '../identity/core/application/ports/user-repository.port';
 
 @Module({
   controllers: [BarbersController],
@@ -23,14 +23,14 @@ import type { UserDirectory } from './core/application/ports/user-directory.port
       useFactory: (
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
-        userDirectory: UserDirectory,
+        userRepository: UserRepository,
       ) =>
         new CreateBarberUseCase(
           barberRepository,
           qualificationRepository,
-          userDirectory,
+          userRepository,
         ),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_DIRECTORY],
+      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_REPOSITORY],
     },
     {
       provide: UpdateBarberUseCase,
@@ -61,28 +61,28 @@ import type { UserDirectory } from './core/application/ports/user-directory.port
       useFactory: (
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
-        userDirectory: UserDirectory,
+        userRepository: UserRepository,
       ) =>
         new AddQualificationToBarberUseCase(
           barberRepository,
           qualificationRepository,
-          userDirectory,
+          userRepository,
         ),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_DIRECTORY],
+      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_REPOSITORY],
     },
     {
       provide: RemoveQualificationFromBarberUseCase,
       useFactory: (
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
-        userDirectory: UserDirectory,
+        userRepository: UserRepository,
       ) =>
         new RemoveQualificationFromBarberUseCase(
           barberRepository,
           qualificationRepository,
-          userDirectory,
+          userRepository,
         ),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_DIRECTORY],
+      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_REPOSITORY],
     },
   ],
 })

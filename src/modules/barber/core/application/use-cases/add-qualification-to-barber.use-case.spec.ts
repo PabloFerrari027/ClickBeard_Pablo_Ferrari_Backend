@@ -1,4 +1,8 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
 import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { Qualification } from '../../../../qualification/core/domain/entities/qualification.entity';
 import { QualificationNotFoundError } from '../../../../qualification/core/domain/errors/qualification-not-found.error';
@@ -8,26 +12,26 @@ import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error
 import { Barber } from '../../domain/entities/barber.entity';
 import { Age } from '../../domain/value-objects/age.value-object';
 import { BarberRepository } from '../ports/barber-repository.port';
-import { UserDirectory, UserSnapshot } from '../ports/user-directory.port';
 import { AddQualificationToBarberUseCase } from './add-qualification-to-barber.use-case';
+
+function buildAdmin(role: UserRole = UserRole.ADMIN): User {
+  return User.restore({
+    id: 'admin-id',
+    name: 'Admin User',
+    email: Email.create('admin-id@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role,
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+}
 
 describe('AddQualificationToBarberUseCase', () => {
   let barberRepository: jest.Mocked<BarberRepository>;
   let qualificationRepository: jest.Mocked<QualificationRepository>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: AddQualificationToBarberUseCase;
-
-  function buildAdminSnapshot(
-    overrides: Partial<UserSnapshot> = {},
-  ): UserSnapshot {
-    return {
-      id: 'admin-id',
-      name: 'Admin User',
-      role: UserRole.ADMIN,
-      active: true,
-      ...overrides,
-    };
-  }
 
   function buildBarber(qualificationIds = ['qualification-1']): Barber {
     return Barber.restore({
@@ -56,15 +60,17 @@ describe('AddQualificationToBarberUseCase', () => {
       listByBarberId: jest.fn(),
       delete: jest.fn(),
     };
-    userDirectory = {
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new AddQualificationToBarberUseCase(
       barberRepository,
       qualificationRepository,
-      userDirectory,
+      userRepository,
     );
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.listByBarberId.mockResolvedValue([]);
   });
 
@@ -90,9 +96,7 @@ describe('AddQualificationToBarberUseCase', () => {
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userDirectory.findById.mockResolvedValue(
-      buildAdminSnapshot({ role: UserRole.BARBER }),
-    );
+    userRepository.findById.mockResolvedValue(buildAdmin(UserRole.BARBER));
 
     await expect(
       useCase.execute({

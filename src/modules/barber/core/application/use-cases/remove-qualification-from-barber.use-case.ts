@@ -1,3 +1,4 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error';
 import {
@@ -7,7 +8,6 @@ import {
 import { toBarberDto } from '../mappers/barber.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { BarberRepository } from '../ports/barber-repository.port';
-import { UserDirectory } from '../ports/user-directory.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class RemoveQualificationFromBarberUseCase implements UseCase<
@@ -17,13 +17,13 @@ export class RemoveQualificationFromBarberUseCase implements UseCase<
   constructor(
     private readonly barberRepository: BarberRepository,
     private readonly qualificationRepository: QualificationRepository,
-    private readonly userDirectory: UserDirectory,
+    private readonly userRepository: UserRepository,
   ) {}
 
   async execute(
     input: RemoveQualificationFromBarberInputDto,
   ): Promise<RemoveQualificationFromBarberOutputDto> {
-    await ensureRequesterIsAdmin(this.userDirectory, input.requesterId);
+    await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
     const barber = await this.barberRepository.findById(input.barberId);
 

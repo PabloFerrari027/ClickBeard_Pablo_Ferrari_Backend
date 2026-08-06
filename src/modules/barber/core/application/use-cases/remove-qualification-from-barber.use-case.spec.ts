@@ -1,32 +1,36 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
+import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { BarberMustHaveAtLeastOneQualificationError } from '../../domain/errors/barber-must-have-at-least-one-qualification.error';
 import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error';
 import { QualificationNotAssignedError } from '../../domain/errors/qualification-not-assigned.error';
 import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { Barber } from '../../domain/entities/barber.entity';
 import { Age } from '../../domain/value-objects/age.value-object';
-import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { BarberRepository } from '../ports/barber-repository.port';
-import { UserDirectory, UserSnapshot } from '../ports/user-directory.port';
 import { RemoveQualificationFromBarberUseCase } from './remove-qualification-from-barber.use-case';
+
+function buildAdmin(role: UserRole = UserRole.ADMIN): User {
+  return User.restore({
+    id: 'admin-id',
+    name: 'Admin User',
+    email: Email.create('admin-id@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role,
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+}
 
 describe('RemoveQualificationFromBarberUseCase', () => {
   let barberRepository: jest.Mocked<BarberRepository>;
   let qualificationRepository: jest.Mocked<QualificationRepository>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: RemoveQualificationFromBarberUseCase;
-
-  function buildAdminSnapshot(
-    overrides: Partial<UserSnapshot> = {},
-  ): UserSnapshot {
-    return {
-      id: 'admin-id',
-      name: 'Admin User',
-      role: UserRole.ADMIN,
-      active: true,
-      ...overrides,
-    };
-  }
 
   function buildBarber(qualificationIds: string[]): Barber {
     return Barber.restore({
@@ -55,15 +59,17 @@ describe('RemoveQualificationFromBarberUseCase', () => {
       listByBarberId: jest.fn(),
       delete: jest.fn(),
     };
-    userDirectory = {
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new RemoveQualificationFromBarberUseCase(
       barberRepository,
       qualificationRepository,
-      userDirectory,
+      userRepository,
     );
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.listByBarberId.mockResolvedValue([]);
   });
 
@@ -83,9 +89,7 @@ describe('RemoveQualificationFromBarberUseCase', () => {
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userDirectory.findById.mockResolvedValue(
-      buildAdminSnapshot({ role: UserRole.BARBER }),
-    );
+    userRepository.findById.mockResolvedValue(buildAdmin(UserRole.BARBER));
 
     await expect(
       useCase.execute({

@@ -1,4 +1,8 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
 import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { Qualification } from '../../../../qualification/core/domain/entities/qualification.entity';
 import { QualificationNotFoundError } from '../../../../qualification/core/domain/errors/qualification-not-found.error';
@@ -9,24 +13,28 @@ import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { Barber } from '../../domain/entities/barber.entity';
 import { Age } from '../../domain/value-objects/age.value-object';
 import { BarberRepository } from '../ports/barber-repository.port';
-import { UserDirectory, UserSnapshot } from '../ports/user-directory.port';
 import { CreateBarberUseCase } from './create-barber.use-case';
+
+function buildUser(overrides: { id?: string; role?: UserRole } = {}): User {
+  const id = overrides.id ?? 'user-id';
+
+  return User.restore({
+    id,
+    name: 'John Barber',
+    email: Email.create(`${id}@example.com`),
+    password: Password.fromHash('hashed-password'),
+    role: overrides.role ?? UserRole.BARBER,
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+}
 
 describe('CreateBarberUseCase', () => {
   let barberRepository: jest.Mocked<BarberRepository>;
   let qualificationRepository: jest.Mocked<QualificationRepository>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: CreateBarberUseCase;
-
-  function buildSnapshot(overrides: Partial<UserSnapshot> = {}): UserSnapshot {
-    return {
-      id: 'user-id',
-      name: 'John Barber',
-      role: UserRole.BARBER,
-      active: true,
-      ...overrides,
-    };
-  }
 
   beforeEach(() => {
     barberRepository = {
@@ -43,22 +51,24 @@ describe('CreateBarberUseCase', () => {
       listByBarberId: jest.fn(),
       delete: jest.fn(),
     };
-    userDirectory = {
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new CreateBarberUseCase(
       barberRepository,
       qualificationRepository,
-      userDirectory,
+      userRepository,
     );
   });
 
   it('creates a barber and returns its dto', async () => {
-    userDirectory.findById.mockImplementation((id: string) =>
+    userRepository.findById.mockImplementation((id: string) =>
       Promise.resolve(
         id === 'admin-id'
-          ? buildSnapshot({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildSnapshot(),
+          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
+          : buildUser(),
       ),
     );
     barberRepository.findById.mockResolvedValue(null);
@@ -81,8 +91,8 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userDirectory.findById.mockResolvedValue(
-      buildSnapshot({ id: 'admin-id', role: UserRole.CLIENT }),
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.CLIENT }),
     );
 
     await expect(
@@ -98,10 +108,10 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws UserNotFoundError when the target user does not exist', async () => {
-    userDirectory.findById.mockImplementation((id: string) =>
+    userRepository.findById.mockImplementation((id: string) =>
       Promise.resolve(
         id === 'admin-id'
-          ? buildSnapshot({ id: 'admin-id', role: UserRole.ADMIN })
+          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
           : null,
       ),
     );
@@ -118,11 +128,11 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws UserIsNotBarberError when the target user does not have the BARBER role', async () => {
-    userDirectory.findById.mockImplementation((id: string) =>
+    userRepository.findById.mockImplementation((id: string) =>
       Promise.resolve(
         id === 'admin-id'
-          ? buildSnapshot({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildSnapshot({ role: UserRole.CLIENT }),
+          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
+          : buildUser({ role: UserRole.CLIENT }),
       ),
     );
 
@@ -138,11 +148,11 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws BarberAlreadyExistsError when a barber profile already exists for the user', async () => {
-    userDirectory.findById.mockImplementation((id: string) =>
+    userRepository.findById.mockImplementation((id: string) =>
       Promise.resolve(
         id === 'admin-id'
-          ? buildSnapshot({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildSnapshot(),
+          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
+          : buildUser(),
       ),
     );
     barberRepository.findById.mockResolvedValue(
@@ -167,11 +177,11 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws QualificationNotFoundError when a qualification does not exist', async () => {
-    userDirectory.findById.mockImplementation((id: string) =>
+    userRepository.findById.mockImplementation((id: string) =>
       Promise.resolve(
         id === 'admin-id'
-          ? buildSnapshot({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildSnapshot(),
+          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
+          : buildUser(),
       ),
     );
     barberRepository.findById.mockResolvedValue(null);
