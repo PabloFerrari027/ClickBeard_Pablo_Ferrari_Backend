@@ -10,10 +10,20 @@ import { RemoveQualificationFromBarberUseCase } from './core/application/use-cas
 import { UpdateBarberUseCase } from './core/application/use-cases/update-barber.use-case';
 import { BarbersController } from './presentation/controllers/barbers.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
+import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
+import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
+import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
+import { CacheResource } from '../../shared/application/cache/cache-resource.enum';
+import { CACHE_INVALIDATION_SERVICE } from '../../shared/application/ports/cache-invalidation-service.port';
+import { CACHE_MANAGER } from '../../shared/application/ports/cache-manager.port';
+import { CACHE_POLICY } from '../../shared/application/ports/cache-policy.port';
 
 import type { QualificationRepository } from '../qualification/core/application/ports/qualification-repository.port';
 import type { BarberRepository } from './core/application/ports/barber-repository.port';
 import type { UserRepository } from '../identity/core/application/ports/user-repository.port';
+import type { CacheInvalidationService } from '../../shared/application/ports/cache-invalidation-service.port';
+import type { CacheManager } from '../../shared/application/ports/cache-manager.port';
+import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
 
 @Module({
   controllers: [BarbersController],
@@ -24,37 +34,96 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
         userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new CreateBarberUseCase(
-          barberRepository,
-          qualificationRepository,
-          userRepository,
+        new CacheInvalidatingUseCase(
+          new CreateBarberUseCase(
+            barberRepository,
+            qualificationRepository,
+            userRepository,
+          ),
+          cacheInvalidationService,
+          {
+            buildPrefixes: () => [CacheKeyGenerator.barbersListPrefix()],
+          },
         ),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_REPOSITORY],
+      inject: [
+        BARBER_REPOSITORY,
+        QUALIFICATION_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: UpdateBarberUseCase,
       useFactory: (
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
-      ) => new UpdateBarberUseCase(barberRepository, qualificationRepository),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY],
+        cacheInvalidationService: CacheInvalidationService,
+      ) =>
+        new CacheInvalidatingUseCase(
+          new UpdateBarberUseCase(barberRepository, qualificationRepository),
+          cacheInvalidationService,
+          {
+            buildKeys: (input) => [CacheKeyGenerator.barber(input.barberId)],
+            buildPrefixes: () => [CacheKeyGenerator.barbersListPrefix()],
+          },
+        ),
+      inject: [
+        BARBER_REPOSITORY,
+        QUALIFICATION_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: GetBarberUseCase,
       useFactory: (
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
-      ) => new GetBarberUseCase(barberRepository, qualificationRepository),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY],
+        cacheManager: CacheManager,
+        cachePolicy: CachePolicy,
+      ) =>
+        new CachedUseCase(
+          new GetBarberUseCase(barberRepository, qualificationRepository),
+          cacheManager,
+          cachePolicy,
+          {
+            resource: CacheResource.BARBER,
+            buildKey: (input) => CacheKeyGenerator.barber(input.barberId),
+          },
+        ),
+      inject: [
+        BARBER_REPOSITORY,
+        QUALIFICATION_REPOSITORY,
+        CACHE_MANAGER,
+        CACHE_POLICY,
+      ],
     },
     {
       provide: ListBarbersUseCase,
       useFactory: (
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
-      ) => new ListBarbersUseCase(barberRepository, qualificationRepository),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY],
+        cacheManager: CacheManager,
+        cachePolicy: CachePolicy,
+      ) =>
+        new CachedUseCase(
+          new ListBarbersUseCase(barberRepository, qualificationRepository),
+          cacheManager,
+          cachePolicy,
+          {
+            resource: CacheResource.BARBERS_LIST,
+            // Mirrors ListBarbersUseCase's own DEFAULT_PAGE, so an
+            // omitted page and an explicit page=1 share one cache entry.
+            buildKey: (input) => CacheKeyGenerator.barbersList(input.page ?? 1),
+          },
+        ),
+      inject: [
+        BARBER_REPOSITORY,
+        QUALIFICATION_REPOSITORY,
+        CACHE_MANAGER,
+        CACHE_POLICY,
+      ],
     },
     {
       provide: AddQualificationToBarberUseCase,
@@ -62,13 +131,26 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
         userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new AddQualificationToBarberUseCase(
-          barberRepository,
-          qualificationRepository,
-          userRepository,
+        new CacheInvalidatingUseCase(
+          new AddQualificationToBarberUseCase(
+            barberRepository,
+            qualificationRepository,
+            userRepository,
+          ),
+          cacheInvalidationService,
+          {
+            buildKeys: (input) => [CacheKeyGenerator.barber(input.barberId)],
+            buildPrefixes: () => [CacheKeyGenerator.barbersListPrefix()],
+          },
         ),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_REPOSITORY],
+      inject: [
+        BARBER_REPOSITORY,
+        QUALIFICATION_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: RemoveQualificationFromBarberUseCase,
@@ -76,13 +158,26 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
         barberRepository: BarberRepository,
         qualificationRepository: QualificationRepository,
         userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new RemoveQualificationFromBarberUseCase(
-          barberRepository,
-          qualificationRepository,
-          userRepository,
+        new CacheInvalidatingUseCase(
+          new RemoveQualificationFromBarberUseCase(
+            barberRepository,
+            qualificationRepository,
+            userRepository,
+          ),
+          cacheInvalidationService,
+          {
+            buildKeys: (input) => [CacheKeyGenerator.barber(input.barberId)],
+            buildPrefixes: () => [CacheKeyGenerator.barbersListPrefix()],
+          },
         ),
-      inject: [BARBER_REPOSITORY, QUALIFICATION_REPOSITORY, USER_REPOSITORY],
+      inject: [
+        BARBER_REPOSITORY,
+        QUALIFICATION_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
   ],
 })
