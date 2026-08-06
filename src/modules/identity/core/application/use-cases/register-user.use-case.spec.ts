@@ -1,6 +1,8 @@
 import { InvalidNameError } from '../../domain/errors/invalid-name.error';
 import { InvalidUserRoleError } from '../../domain/errors/invalid-user-role.error';
 import { UserAlreadyExistsError } from '../../domain/errors/user-already-exists.error';
+import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
+import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { WeakPasswordError } from '../../domain/errors/weak-password.error';
 import { UserRole } from '../../domain/enums/user-role.enum';
 import { User } from '../../domain/entities/user.entity';
@@ -10,6 +12,19 @@ import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRepository } from '../ports/user-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { RegisterUserUseCase } from './register-user.use-case';
+
+function buildUser(role: UserRole): User {
+  return User.restore({
+    id: 'requester-id',
+    name: 'Requester',
+    email: Email.create('requester-id@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role,
+    active: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+}
 
 describe('RegisterUserUseCase', () => {
   let userRepository: jest.Mocked<UserRepository>;
@@ -81,6 +96,54 @@ describe('RegisterUserUseCase', () => {
 
     const savedUser = userRepository.save.mock.calls[0][0];
     expect(savedUser.getRole()).toBe(UserRole.BARBER);
+  });
+
+  it('registers a new ADMIN when requested by an existing admin', async () => {
+    userRepository.findById.mockResolvedValue(buildUser(UserRole.ADMIN));
+    userRepository.findByEmail.mockResolvedValue(null);
+    passwordHasher.hash.mockResolvedValue('hashed-password');
+
+    await useCase.execute({
+      name: 'New Admin',
+      email: 'new-admin@example.com',
+      password: 'password1',
+      role: UserRole.ADMIN,
+      requesterId: 'requester-id',
+    });
+
+    expect(userRepository.findById).toHaveBeenCalledWith('requester-id');
+    const savedUser = userRepository.save.mock.calls[0][0];
+    expect(savedUser.getRole()).toBe(UserRole.ADMIN);
+  });
+
+  it('throws UserNotFoundError when registering an ADMIN without a requesterId', async () => {
+    await expect(
+      useCase.execute({
+        name: 'New Admin',
+        email: 'new-admin@example.com',
+        password: 'password1',
+        role: UserRole.ADMIN,
+      }),
+    ).rejects.toThrow(UserNotFoundError);
+
+    expect(userRepository.findByEmail).not.toHaveBeenCalled();
+  });
+
+  it('throws UserIsNotAdminError when the requester is not an admin', async () => {
+    userRepository.findById.mockResolvedValue(buildUser(UserRole.CLIENT));
+
+    await expect(
+      useCase.execute({
+        name: 'New Admin',
+        email: 'new-admin@example.com',
+        password: 'password1',
+        role: UserRole.ADMIN,
+        requesterId: 'requester-id',
+      }),
+    ).rejects.toThrow(UserIsNotAdminError);
+
+    expect(userRepository.findByEmail).not.toHaveBeenCalled();
+    expect(userRepository.save).not.toHaveBeenCalled();
   });
 
   it('throws InvalidUserRoleError when the role is not a known UserRole', async () => {

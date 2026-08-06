@@ -1,7 +1,8 @@
 import { InvalidUserRoleError } from '../../domain/errors/invalid-user-role.error';
 import { UserAlreadyExistsError } from '../../domain/errors/user-already-exists.error';
+import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { UserRegisteredEvent } from '../../domain/events/user-registered.event';
-import { isValidUserRole } from '../../domain/enums/user-role.enum';
+import { isValidUserRole, UserRole } from '../../domain/enums/user-role.enum';
 import { User } from '../../domain/entities/user.entity';
 import { Email } from '../../domain/value-objects/email.value-object';
 import { Password } from '../../domain/value-objects/password.value-object';
@@ -11,6 +12,7 @@ import {
   RegisterUserOutputDto,
 } from '../dtos/register-user.dto';
 import { toUserDto } from '../mappers/user.mapper';
+import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRepository } from '../ports/user-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
@@ -29,6 +31,14 @@ export class RegisterUserUseCase implements UseCase<
   async execute(input: RegisterUserInputDto): Promise<RegisterUserOutputDto> {
     if (input.role && !isValidUserRole(input.role)) {
       throw new InvalidUserRoleError(input.role);
+    }
+
+    if (input.role === UserRole.ADMIN) {
+      if (!input.requesterId) {
+        throw new UserNotFoundError();
+      }
+
+      await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
     }
 
     const email = Email.create(input.email);
