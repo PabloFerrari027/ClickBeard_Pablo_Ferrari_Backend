@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SequelizeModule } from '@nestjs/sequelize';
 
 import { PASSWORD_HASHER } from './core/application/ports/password-hasher.port';
 import { USER_REPOSITORY } from './core/application/ports/user-repository.port';
@@ -9,6 +10,8 @@ import { ChangeUserRoleUseCase } from './core/application/use-cases/change-user-
 import { DeactivateUserUseCase } from './core/application/use-cases/deactivate-user.use-case';
 import { GetUserProfileUseCase } from './core/application/use-cases/get-user-profile.use-case';
 import { RegisterUserUseCase } from './core/application/use-cases/register-user.use-case';
+import { UserModel } from './infrastructure/persistence/models/user.model';
+import { SequelizeUserRepository } from './infrastructure/persistence/repositories/sequelize-user.repository';
 import { UsersController } from './presentation/controllers/users.controller';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
@@ -27,8 +30,10 @@ import type { CachePolicy } from '../../shared/application/ports/cache-policy.po
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
+  imports: [SequelizeModule.forFeature([UserModel])],
   controllers: [UsersController],
   providers: [
+    { provide: USER_REPOSITORY, useClass: SequelizeUserRepository },
     {
       provide: RegisterUserUseCase,
       useFactory: (
@@ -132,5 +137,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
     },
   ],
+  exports: [USER_REPOSITORY],
 })
 export class IdentityModule {}
