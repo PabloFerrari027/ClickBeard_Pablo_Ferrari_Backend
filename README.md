@@ -102,13 +102,52 @@ src/
 │   │   │       └── use-cases/       # DispatchNotification
 │   │   └── index.module.ts          # NotificationModule wiring
 │   │
-│   └── scheduling/                  # Appointment scheduling — scaffolded, not yet implemented
-│       └── index.module.ts
+│   ├── scheduling/                  # Appointment scheduling: booking, cancellation, availability
+│   │   ├── core/
+│   │   │   ├── domain/
+│   │   │   │   ├── entities/        # Appointment
+│   │   │   │   ├── value-objects/   # TimeSlot (30-minute slots within business hours)
+│   │   │   │   ├── enums/           # AppointmentStatus (SCHEDULED, CANCELLED)
+│   │   │   │   ├── events/          # AppointmentCreated, AppointmentCancelled
+│   │   │   │   └── errors/          # BarberTimeSlotConflictError, AppointmentTooSoonError, ...
+│   │   │   └── application/
+│   │   │       ├── dtos/            # Use case input/output DTOs
+│   │   │       ├── mappers/         # Appointment -> AppointmentDto, TimeSlot -> TimeSlotDto
+│   │   │       ├── policies/        # ensureRequesterIsAdmin
+│   │   │       ├── ports/           # AppointmentRepository, AvailabilityService, BarberDirectory,
+│   │   │       │                    # TransactionManager (reuses Identity's UserRepository directly)
+│   │   │       └── use-cases/       # CreateAppointment, CancelAppointment, GetAppointment,
+│   │   │                            # ListCustomerAppointments, ListTodayAppointments,
+│   │   │                            # ListFutureAppointments, ListAvailableTimeSlots
+│   │   └── index.module.ts          # SchedulingModule wiring — no controller yet
+│   │
+│   └── analytics/                   # Admin dashboard: read-only metrics across every other module
+│       ├── core/
+│       │   ├── domain/
+│       │   │   ├── enums/           # PeriodPreset (TODAY, WEEK, MONTH, YEAR, CUSTOM)
+│       │   │   ├── value-objects/   # DateRange
+│       │   │   └── errors/          # InvalidDateRangeError, CustomRangeRequiredError, ...
+│       │   └── application/
+│       │       ├── dtos/            # Read models (UserMetricsDto, AppointmentMetricsDto, ...) and
+│       │       │                    # use case input/output DTOs
+│       │       ├── mappers/         # DateRangeFilterDto -> DateRange
+│       │       ├── policies/        # ensureRequesterIsAdmin
+│       │       ├── ports/           # UserMetricsQuery, AppointmentMetricsQuery, BarberMetricsQuery,
+│       │       │                    # CustomerMetricsQuery, AnalyticsRepository (future event projections)
+│       │       └── use-cases/       # GetDashboardMetrics, GetUserMetrics, GetAppointmentMetrics,
+│       │                            # GetBarberMetrics, GetCustomerMetrics, GetOccupationMetrics
+│       ├── presentation/
+│       │   ├── controllers/         # AnalyticsController (/analytics) — every route @Auth(ADMIN)
+│       │   └── dtos/
+│       └── index.module.ts          # AnalyticsModule wiring
 │
 └── shared/
     ├── application/
     │   ├── use-case.ts              # Generic UseCase<Input, Output> contract implemented by every use case
-    │   └── ports/                   # EventBus, MessageQueue, Clock — cross-module technical contracts
+    │   ├── ports/                   # EventBus, MessageQueue, Clock, CacheManager, CachePolicy,
+    │   │                            # CacheInvalidationService — cross-module technical contracts
+    │   └── cache/                   # CacheKey(Prefix), CacheOptions, CacheResource, CacheKeyGenerator,
+    │                                # CachedUseCase / CacheInvalidatingUseCase decorators (see Caching below)
     ├── domain/
     │   └── events/                  # DomainEvent<Payload> — the shape every module's events implement
     ├── config/                      # Environment, Postgres, Redis and queue configuration
@@ -118,16 +157,16 @@ src/
     └── queue/                       # Queue integration via BullMQ/Redis
 ```
 
-- Each business domain (`auth`, `identity`, `barber`, `qualification`, `account-verification`, `notification`, `scheduling`) lives in its own module under `src/modules`, keeping the code isolated and easy to evolve independently. `barber` and `qualification` were deliberately split into separate modules — a barber profile and the qualification catalog are distinct bounded contexts that happen to reference each other (a barber holds qualification ids; deleting a qualification checks whether any barber still uses it), so each module's use cases reach into the other's ports via plain relative imports rather than merging the two domains. `auth` and `account-verification` follow the same pattern for the user identity they need: instead of depending on Identity's `User` entity, each defines its own decoupled `UserDirectory` port and snapshot type, while still literally reusing Identity's `PasswordHasher` port (a technology-agnostic hash/compare contract, not a domain concept) for both passwords and verification codes.
-- `src/shared` concentrates cross-cutting integrations and configuration reused across domain modules: validated environment variables (`class-validator`), PostgreSQL connection (Sequelize), asynchronous queues with Redis (BullMQ), the generic `UseCase` contract every use case implements, the `DomainEvent`/`EventBus`/`MessageQueue`/`Clock` primitives every module's event publishing builds on (see [Event-driven notifications](#event-driven-notifications) below), and the `FieldSelectionInterceptor` presentation interceptor (see [API conventions](#api-conventions) below).
-- Domain and application layers have no dependency on NestJS or any infrastructure package — controllers depend on use cases, use cases depend on port interfaces, and (once written) infrastructure adapters implement those ports. No persistence, queue or email adapters exist yet, so every port defined so far (`UserRepository`, `PasswordHasher`, `BarberRepository`, `QualificationRepository`, `UserDirectory`, `TokenProvider`, `RefreshTokenRepository`, `EventBus`, `MessageQueue`, `Clock`, `VerificationCodeRepository`, `VerificationCodeGenerator`, `SessionManager`, `LanguageResolver`, `MessageTemplateProvider`, `NotificationSender`) is defined but not yet bound to a concrete implementation, and `scheduling` remains an empty scaffold.
+- Each business domain (`auth`, `identity`, `barber`, `qualification`, `account-verification`, `notification`, `scheduling`, `analytics`) lives in its own module under `src/modules`, keeping the code isolated and easy to evolve independently. `barber` and `qualification` were deliberately split into separate modules — a barber profile and the qualification catalog are distinct bounded contexts that happen to reference each other (a barber holds qualification ids; deleting a qualification checks whether any barber still uses it), so each module's use cases reach into the other's ports via plain relative imports rather than merging the two domains. `auth` and `account-verification` follow the same pattern for the user identity they need: instead of depending on Identity's `User` entity, each defines its own decoupled `UserDirectory` port and snapshot type, while still literally reusing Identity's `PasswordHasher` port (a technology-agnostic hash/compare contract, not a domain concept) for both passwords and verification codes. `analytics` takes the same isolation principle further still: it owns no data of its own at all, so instead of reaching into another module's repository or entities it defines its own narrow, read-only ports (`UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`) scoped to exactly the aggregates a dashboard needs, never duplicating another module's business rules.
+- `src/shared` concentrates cross-cutting integrations and configuration reused across domain modules: validated environment variables (`class-validator`), PostgreSQL connection (Sequelize), asynchronous queues with Redis (BullMQ), the generic `UseCase` contract every use case implements, the cache-aside/invalidation primitives every cached use case is wrapped with (`CacheManager`, `CachePolicy`, `CacheInvalidationService`, `CacheKeyGenerator`, `CachedUseCase`/`CacheInvalidatingUseCase` — see [Caching](#caching) below), the `DomainEvent`/`EventBus`/`MessageQueue`/`Clock` primitives every module's event publishing builds on (see [Event-driven notifications](#event-driven-notifications) below), and the `FieldSelectionInterceptor` presentation interceptor (see [API conventions](#api-conventions) below).
+- Domain and application layers have no dependency on NestJS or any infrastructure package — controllers depend on use cases, use cases depend on port interfaces, and (once written) infrastructure adapters implement those ports. No persistence, queue, cache or email adapters exist yet, so every port defined so far (`UserRepository`, `PasswordHasher`, `BarberRepository`, `QualificationRepository`, `UserDirectory`, `TokenProvider`, `RefreshTokenRepository`, `EventBus`, `MessageQueue`, `Clock`, `VerificationCodeRepository`, `VerificationCodeGenerator`, `SessionManager`, `LanguageResolver`, `MessageTemplateProvider`, `NotificationSender`, `AppointmentRepository`, `AvailabilityService`, `BarberDirectory`, `TransactionManager`, `UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`, `AnalyticsRepository`, `CacheManager`, `CachePolicy`, `CacheInvalidationService`) is defined but not yet bound to a concrete implementation, and `scheduling` has no controller yet.
 - Supporting infrastructure (PostgreSQL, Redis and, optionally, the application itself) runs in Docker containers, orchestrated by `docker-compose.yml`.
 - Interactive API documentation is generated automatically by Swagger and is available at `/docs` while the application is running.
 
 ## API conventions
 
 - **Sparse fieldsets**: any endpoint on a controller decorated with `FieldSelectionInterceptor` accepts a `?fields=a,b,c` query parameter to return only the requested top-level response fields (e.g. `GET /barbers/:id?fields=id,name`). Every controller in this project uses it.
-- **Authorization**: there is no route guard/JWT middleware yet. Actions restricted to admins (see Business Rules) are enforced inside the use case itself via the `ensureRequesterIsAdmin` policy, and the caller must pass the acting user's id explicitly as `requesterId` in the request body.
+- **Authorization**: every protected route is guarded via the composed `@Auth(...roles)` / `@SelfOrAdmin()` decorators (`auth` module, `presentation/decorators`). `AccessTokenGuard` validates the bearer access token and attaches the caller's id and **current** role to the request; `RolesGuard` enforces an optional role allow-list (no roles means any authenticated user); `SelfOrAdminGuard` allows a route for the resource's own owner or an `ADMIN`. Use cases still receive the acting user's id (`requesterId`/`userId`), but controllers now source it from the verified token via `@CurrentUser()` instead of trusting it from the request body. Every admin-only use case also re-checks the role itself via the `ensureRequesterIsAdmin` policy, so the rule holds even if a use case is ever invoked outside its guarded route (`scheduling` has no controller yet, so its checks — e.g. `GetAppointmentUseCase`'s ownership check — currently run entirely inside the use case).
 
 ## Event-driven notifications
 
@@ -150,6 +189,31 @@ AccountVerification.GenerateVerificationCode            │
 - `DispatchNotificationUseCase` (Notification module) is the one pipeline behind every notification: it resolves the recipient's preferred language (`LanguageResolver`, keyed by email — the one field every notifiable event carries), looks up the template for `event.name` + that language (`MessageTemplateProvider`), fills in `{{placeholder}}` variables from `event.payload`, and sends it (`NotificationSender`). It silently does nothing for events with no `recipientEmail` or no matching template, so unrelated events (like `VerificationSucceeded`/`VerificationFailed`) can flow through the same bus without triggering anything.
 - The verification-code email is triggered by `VerificationCodeGenerated`, not `UserLoggedIn` — the code doesn't exist yet at the moment login succeeds, so the email can only be built once Account Verification has actually generated one.
 - `MessageQueue` (`shared/application/ports`) models the async transport a real `EventBus` adapter would use internally to move a published event off the request path; no Core code calls it directly yet, since the queue infrastructure itself hasn't been implemented.
+
+## Caching
+
+Every cacheable read is wrapped by a generic Decorator instead of calling a cache from inside the use case — the application layer never imports anything cache-related, so a use case's own logic is identical whether it ends up cached or not.
+
+```text
+GetBarberUseCase ────wrapped by────► CachedUseCase<Input, Output>            (Cache-Aside)
+                                          1. CacheManager.get(key)
+                                          2. hit  → return the cached value, the wrapped use case never runs
+                                          3. miss → run the wrapped use case
+                                          4. CacheManager.set(key, result, { ttlSeconds })
+                                          5. return the result
+
+UpdateBarberUseCase ─wrapped by────► CacheInvalidatingUseCase<Input, Output>
+                                          1. run the wrapped use case (persists the change)
+                                          2. CacheInvalidationService.invalidateKeys/invalidatePrefixes(...)
+                                          3. return the result   — synchronously, before the caller gets a response
+```
+
+- `CacheManager` (`shared/application/ports`) is the only port that actually talks to a cache technology — `get`/`set`/`delete`/`deleteByPrefix`. It's defined but not implemented yet, same as every other port in this project; swapping Redis for anything else will never touch the application layer.
+- `CachePolicy` resolves how long each `CacheResource` (`USER_PROFILE`, `BARBER`, `BARBERS_LIST`, `QUALIFICATIONS`, `APPOINTMENT`, `CUSTOMER_APPOINTMENTS`, `AVAILABLE_TIME_SLOTS`, and one per Analytics metric) stays cached, so tuning a TTL never requires touching a use case.
+- `CacheKeyGenerator` (`shared/application/cache`) is the single place every cache key format is defined (`user:{id}`, `barber:{id}`, `barbers:list:{page}`, `appointments:{customerId}:{page}`, `time-slots:{barberId}:{date}:{qualificationId}`, `dashboard:{period}`, `metrics:{type}:{period}`, ...) — no module's wiring ever builds a key string by hand.
+- Invalidation is always **synchronous**, never event-driven: a write use case's `index.module.ts` wiring wraps it in `CacheInvalidatingUseCase`, which clears the affected keys/prefixes right after persistence and before the caller gets a response, so the very next read is guaranteed fresh. Domain events keep existing for their own purpose (see [Event-driven notifications](#event-driven-notifications) above) — cache consistency never depends on one being consumed.
+- `GetAppointmentUseCase`'s cache key is the one exception that includes the requester's id (`appointment:{id}:{requesterId}`, not just `appointment:{id}`): it performs its own ownership/admin check internally (Scheduling has no controller/guard yet), so a cache hit must never let one caller ride on another caller's already-authorized result. Every other cached read either has no such check or is already gated by a controller guard before the cache is ever reached (e.g. Analytics' `@Auth(ADMIN)`), so its key is shared across every valid caller.
+- Currently cached: Identity's `GetUserProfile`; Barber's `GetBarber` and `ListBarbers`; Qualification's `ListQualifications`; Scheduling's `GetAppointment`, `ListCustomerAppointments` and `ListAvailableTimeSlots`; and all six Analytics dashboard/metrics use cases. The writes that make those stale (`CreateBarber`, `UpdateBarber`, `AddQualificationToBarber`, `RemoveQualificationFromBarber`, `CreateQualification`, `UpdateQualification`, `DeleteQualification`, `CreateAppointment`, `CancelAppointment`, `ChangePassword`, `ChangeUserRole`, `DeactivateUser`, `ActivateUser`) invalidate exactly the keys/prefixes they affect.
 
 ## Business rules
 
@@ -194,6 +258,22 @@ AccountVerification.GenerateVerificationCode            │
 - A qualification name must be at least 2 characters long once trimmed and must be unique across the catalog; description is optional and blank/whitespace-only values are stored as absent.
 - A qualification cannot be deleted while at least one barber still has it assigned.
 - Creating, updating, and deleting qualifications all require the requester to be an `ADMIN`.
+
+### Scheduling (appointments)
+
+- An appointment can only be booked for a barber who is active and holds the requested qualification.
+- Appointments are booked in fixed 30-minute slots aligned to business hours (08:00–18:00); a slot outside that grid is rejected.
+- Appointments must be booked at least 2 hours in advance; the same 2-hour window applies to cancellation — an appointment can no longer be cancelled once it's inside that window.
+- A barber cannot be double-booked: creating an appointment fails if that barber's time slot is already occupied by another non-cancelled appointment.
+- Only the appointment's own customer, or an `ADMIN`, may view or cancel it.
+- Cancelling an already-cancelled appointment is rejected (`AppointmentAlreadyCancelledError`), not treated as a no-op.
+
+### Analytics (admin dashboard)
+
+- Every endpoint is restricted to `ADMIN`.
+- Analytics owns no data: every read composes narrow, Analytics-defined ports (`UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`) instead of reusing another module's repository or duplicating its business rules.
+- Every query accepts a date-range filter — `TODAY`, `WEEK`, `MONTH`, `YEAR`, or `CUSTOM` (which requires both `startAt` and `endAt`) — resolved by the `DateRange` value object.
+- `AnalyticsRepository` is a projection-store port reserved for a future event-driven adapter that maintains metrics incrementally; nothing consumes it yet, so dashboard/metric reads currently query the source ports directly (through the cache — see [Caching](#caching) above).
 
 ### Notifications
 
