@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SequelizeModule } from '@nestjs/sequelize';
 
 import { APPOINTMENT_REPOSITORY } from './core/application/ports/appointment-repository.port';
 import { AVAILABILITY_SERVICE } from './core/application/ports/availability-service.port';
@@ -11,8 +12,14 @@ import { ListAvailableTimeSlotsUseCase } from './core/application/use-cases/list
 import { ListCustomerAppointmentsUseCase } from './core/application/use-cases/list-customer-appointments.use-case';
 import { ListFutureAppointmentsUseCase } from './core/application/use-cases/list-future-appointments.use-case';
 import { ListTodayAppointmentsUseCase } from './core/application/use-cases/list-today-appointments.use-case';
+import { AppointmentModel } from './infrastructure/persistence/models/appointment.model';
+import { SequelizeAppointmentRepository } from './infrastructure/persistence/repositories/sequelize-appointment.repository';
+import { SequelizeAvailabilityService } from './infrastructure/persistence/services/sequelize-availability.service';
+import { SequelizeBarberDirectoryService } from './infrastructure/persistence/services/sequelize-barber-directory.service';
+import { SequelizeTransactionManager } from './infrastructure/persistence/services/sequelize-transaction-manager';
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
+import { IdentityModule } from '../identity/index.module';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
 import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
@@ -35,8 +42,16 @@ import type { Clock } from '../../shared/application/ports/clock.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
+  imports: [IdentityModule, SequelizeModule.forFeature([AppointmentModel])],
   controllers: [AppointmentsController],
   providers: [
+    {
+      provide: APPOINTMENT_REPOSITORY,
+      useClass: SequelizeAppointmentRepository,
+    },
+    { provide: TRANSACTION_MANAGER, useClass: SequelizeTransactionManager },
+    { provide: AVAILABILITY_SERVICE, useClass: SequelizeAvailabilityService },
+    { provide: BARBER_DIRECTORY, useClass: SequelizeBarberDirectoryService },
     {
       provide: CreateAppointmentUseCase,
       useFactory: (
