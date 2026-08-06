@@ -10,6 +10,7 @@ import { GetCustomerMetricsUseCase } from './core/application/use-cases/get-cust
 import { GetDashboardMetricsUseCase } from './core/application/use-cases/get-dashboard-metrics.use-case';
 import { GetOccupationMetricsUseCase } from './core/application/use-cases/get-occupation-metrics.use-case';
 import { GetUserMetricsUseCase } from './core/application/use-cases/get-user-metrics.use-case';
+import { AnalyticsController } from './presentation/controllers/analytics.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { CLOCK } from '../../shared/application/ports/clock.port';
 
@@ -21,6 +22,7 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
 import type { Clock } from '../../shared/application/ports/clock.port';
 
 @Module({
+  controllers: [AnalyticsController],
   providers: [
     {
       provide: GetUserMetricsUseCase,
