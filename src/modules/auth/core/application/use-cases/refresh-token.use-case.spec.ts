@@ -1,9 +1,13 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
+import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
 import { InvalidRefreshTokenError } from '../../domain/errors/invalid-refresh-token.error';
 import { RefreshTokenExpiredError } from '../../domain/errors/refresh-token-expired.error';
 import { RefreshToken } from '../../domain/entities/refresh-token.entity';
 import { RefreshTokenRepository } from '../ports/refresh-token-repository.port';
 import { TokenPayload, TokenProvider } from '../ports/token-provider.port';
-import { AuthUserSnapshot, UserDirectory } from '../ports/user-directory.port';
 import { RefreshTokenUseCase } from './refresh-token.use-case';
 
 function buildStoredToken(
@@ -28,24 +32,23 @@ function buildPayload(overrides: Partial<TokenPayload> = {}): TokenPayload {
   return { subject: 'user-id', role: 'CLIENT', ...overrides };
 }
 
-function buildSnapshot(
-  overrides: Partial<AuthUserSnapshot> = {},
-): AuthUserSnapshot {
-  return {
+function buildUser(active = true): User {
+  return User.restore({
     id: 'user-id',
     name: 'Jane Doe',
-    email: 'jane@example.com',
-    passwordHash: 'hashed-password',
-    role: 'CLIENT',
-    active: true,
-    ...overrides,
-  };
+    email: Email.create('jane@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role: UserRole.CLIENT,
+    active,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
 }
 
 describe('RefreshTokenUseCase', () => {
   let refreshTokenRepository: jest.Mocked<RefreshTokenRepository>;
   let tokenProvider: jest.Mocked<TokenProvider>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: RefreshTokenUseCase;
 
   beforeEach(() => {
@@ -60,14 +63,15 @@ describe('RefreshTokenUseCase', () => {
       verifyRefreshToken: jest.fn(),
       hashToken: jest.fn(),
     };
-    userDirectory = {
-      findByEmail: jest.fn(),
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new RefreshTokenUseCase(
       refreshTokenRepository,
       tokenProvider,
-      userDirectory,
+      userRepository,
     );
 
     tokenProvider.hashToken.mockResolvedValue('hashed-refresh-token');
@@ -77,7 +81,7 @@ describe('RefreshTokenUseCase', () => {
     const storedToken = buildStoredToken();
     tokenProvider.verifyRefreshToken.mockResolvedValue(buildPayload());
     refreshTokenRepository.findByTokenHash.mockResolvedValue(storedToken);
-    userDirectory.findById.mockResolvedValue(buildSnapshot());
+    userRepository.findById.mockResolvedValue(buildUser());
     tokenProvider.generateAccessToken.mockResolvedValue({
       token: 'new-access-token',
       expiresAt: new Date('2026-01-01T00:15:00.000Z'),
@@ -156,7 +160,7 @@ describe('RefreshTokenUseCase', () => {
     refreshTokenRepository.findByTokenHash.mockResolvedValue(
       buildStoredToken(),
     );
-    userDirectory.findById.mockResolvedValue(null);
+    userRepository.findById.mockResolvedValue(null);
 
     await expect(
       useCase.execute({ refreshToken: 'refresh-token' }),

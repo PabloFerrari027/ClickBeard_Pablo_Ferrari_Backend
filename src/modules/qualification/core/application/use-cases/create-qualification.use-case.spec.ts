@@ -1,31 +1,32 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
-import { UserIsNotAdminError } from '../../../../barber/core/domain/errors/user-is-not-admin.error';
-import { UserNotFoundError } from '../../../../barber/core/domain/errors/user-not-found.error';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
+import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
+import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { QualificationAlreadyExistsError } from '../../domain/errors/qualification-already-exists.error';
-import {
-  UserDirectory,
-  UserSnapshot,
-} from '../../../../barber/core/application/ports/user-directory.port';
 import { Qualification } from '../../domain/entities/qualification.entity';
 import { QualificationRepository } from '../ports/qualification-repository.port';
 import { CreateQualificationUseCase } from './create-qualification.use-case';
 
+function buildAdmin(role: UserRole = UserRole.ADMIN): User {
+  return User.restore({
+    id: 'admin-id',
+    name: 'Admin User',
+    email: Email.create('admin-id@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role,
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+}
+
 describe('CreateQualificationUseCase', () => {
   let qualificationRepository: jest.Mocked<QualificationRepository>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: CreateQualificationUseCase;
-
-  function buildAdminSnapshot(
-    overrides: Partial<UserSnapshot> = {},
-  ): UserSnapshot {
-    return {
-      id: 'admin-id',
-      name: 'Admin User',
-      role: UserRole.ADMIN,
-      active: true,
-      ...overrides,
-    };
-  }
 
   beforeEach(() => {
     qualificationRepository = {
@@ -36,17 +37,19 @@ describe('CreateQualificationUseCase', () => {
       listByBarberId: jest.fn(),
       delete: jest.fn(),
     };
-    userDirectory = {
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new CreateQualificationUseCase(
       qualificationRepository,
-      userDirectory,
+      userRepository,
     );
   });
 
   it('creates a qualification and returns its dto', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findByName.mockResolvedValue(null);
 
     const result = await useCase.execute({
@@ -61,7 +64,7 @@ describe('CreateQualificationUseCase', () => {
   });
 
   it('throws UserNotFoundError when the requester does not exist', async () => {
-    userDirectory.findById.mockResolvedValue(null);
+    userRepository.findById.mockResolvedValue(null);
 
     await expect(
       useCase.execute({ requesterId: 'missing-id', name: 'Beard Trim' }),
@@ -70,9 +73,7 @@ describe('CreateQualificationUseCase', () => {
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userDirectory.findById.mockResolvedValue(
-      buildAdminSnapshot({ role: UserRole.BARBER }),
-    );
+    userRepository.findById.mockResolvedValue(buildAdmin(UserRole.BARBER));
 
     await expect(
       useCase.execute({ requesterId: 'admin-id', name: 'Beard Trim' }),
@@ -81,7 +82,7 @@ describe('CreateQualificationUseCase', () => {
   });
 
   it('throws QualificationAlreadyExistsError when the name is already taken', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findByName.mockResolvedValue(
       Qualification.create({ name: 'Beard Trim' }),
     );

@@ -1,3 +1,4 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
 import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { Qualification } from '../../../../qualification/core/domain/entities/qualification.entity';
@@ -14,7 +15,6 @@ import {
 import { toBarberDto } from '../mappers/barber.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { BarberRepository } from '../ports/barber-repository.port';
-import { UserDirectory } from '../ports/user-directory.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class CreateBarberUseCase implements UseCase<
@@ -24,19 +24,19 @@ export class CreateBarberUseCase implements UseCase<
   constructor(
     private readonly barberRepository: BarberRepository,
     private readonly qualificationRepository: QualificationRepository,
-    private readonly userDirectory: UserDirectory,
+    private readonly userRepository: UserRepository,
   ) {}
 
   async execute(input: CreateBarberInputDto): Promise<CreateBarberOutputDto> {
-    await ensureRequesterIsAdmin(this.userDirectory, input.requesterId);
+    await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const user = await this.userDirectory.findById(input.userId);
+    const user = await this.userRepository.findById(input.userId);
 
     if (!user) {
       throw new UserNotFoundError();
     }
 
-    if (user.role !== (UserRole.BARBER as string)) {
+    if (user.getRole() !== UserRole.BARBER) {
       throw new UserIsNotBarberError();
     }
 
@@ -62,7 +62,7 @@ export class CreateBarberUseCase implements UseCase<
 
     const barber = Barber.create({
       userId: input.userId,
-      name: user.name,
+      name: user.getName(),
       age: Age.create(input.age),
       hiredAt: input.hiredAt,
       qualificationIds,

@@ -1,31 +1,32 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum';
-import { UserIsNotAdminError } from '../../../../barber/core/domain/errors/user-is-not-admin.error';
+import { User } from '../../../../identity/core/domain/entities/user.entity';
+import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
+import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
+import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { QualificationAlreadyExistsError } from '../../domain/errors/qualification-already-exists.error';
 import { QualificationNotFoundError } from '../../domain/errors/qualification-not-found.error';
-import {
-  UserDirectory,
-  UserSnapshot,
-} from '../../../../barber/core/application/ports/user-directory.port';
 import { Qualification } from '../../domain/entities/qualification.entity';
 import { QualificationRepository } from '../ports/qualification-repository.port';
 import { UpdateQualificationUseCase } from './update-qualification.use-case';
 
+function buildAdmin(role: UserRole = UserRole.ADMIN): User {
+  return User.restore({
+    id: 'admin-id',
+    name: 'Admin User',
+    email: Email.create('admin-id@example.com'),
+    password: Password.fromHash('hashed-password'),
+    role,
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+}
+
 describe('UpdateQualificationUseCase', () => {
   let qualificationRepository: jest.Mocked<QualificationRepository>;
-  let userDirectory: jest.Mocked<UserDirectory>;
+  let userRepository: jest.Mocked<UserRepository>;
   let useCase: UpdateQualificationUseCase;
-
-  function buildAdminSnapshot(
-    overrides: Partial<UserSnapshot> = {},
-  ): UserSnapshot {
-    return {
-      id: 'admin-id',
-      name: 'Admin User',
-      role: UserRole.ADMIN,
-      active: true,
-      ...overrides,
-    };
-  }
 
   function buildQualification(name = 'Beard Trim'): Qualification {
     return Qualification.restore({
@@ -46,17 +47,19 @@ describe('UpdateQualificationUseCase', () => {
       listByBarberId: jest.fn(),
       delete: jest.fn(),
     };
-    userDirectory = {
+    userRepository = {
+      save: jest.fn(),
       findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     useCase = new UpdateQualificationUseCase(
       qualificationRepository,
-      userDirectory,
+      userRepository,
     );
   });
 
   it('updates the qualification and returns its dto', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     const qualification = buildQualification();
     qualificationRepository.findById.mockResolvedValue(qualification);
     qualificationRepository.findByName.mockResolvedValue(null);
@@ -74,9 +77,7 @@ describe('UpdateQualificationUseCase', () => {
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userDirectory.findById.mockResolvedValue(
-      buildAdminSnapshot({ role: UserRole.BARBER }),
-    );
+    userRepository.findById.mockResolvedValue(buildAdmin(UserRole.BARBER));
 
     await expect(
       useCase.execute({
@@ -89,7 +90,7 @@ describe('UpdateQualificationUseCase', () => {
   });
 
   it('throws QualificationNotFoundError when the qualification does not exist', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findById.mockResolvedValue(null);
 
     await expect(
@@ -102,7 +103,7 @@ describe('UpdateQualificationUseCase', () => {
   });
 
   it('throws QualificationAlreadyExistsError when the new name belongs to another qualification', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findById.mockResolvedValue(buildQualification());
     qualificationRepository.findByName.mockResolvedValue(
       Qualification.restore({
@@ -125,7 +126,7 @@ describe('UpdateQualificationUseCase', () => {
   });
 
   it('allows renaming to the same name as the qualification being updated', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     const qualification = buildQualification('Beard Trim');
     qualificationRepository.findById.mockResolvedValue(qualification);
     qualificationRepository.findByName.mockResolvedValue(qualification);
@@ -141,7 +142,7 @@ describe('UpdateQualificationUseCase', () => {
   });
 
   it('does not check for name conflicts when the name is not being changed', async () => {
-    userDirectory.findById.mockResolvedValue(buildAdminSnapshot());
+    userRepository.findById.mockResolvedValue(buildAdmin());
     qualificationRepository.findById.mockResolvedValue(buildQualification());
 
     await useCase.execute({
