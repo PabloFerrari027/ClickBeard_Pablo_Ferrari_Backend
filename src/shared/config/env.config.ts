@@ -1,8 +1,11 @@
 import 'dotenv/config';
 import { Injectable } from '@nestjs/common';
 import {
+  IsBooleanString,
+  IsIn,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -11,8 +14,16 @@ import {
 
 import process from 'node:process';
 
+export type NodeEnv = 'development' | 'production' | 'test';
+
+const NODE_ENVS: NodeEnv[] = ['development', 'production', 'test'];
+
 @Injectable()
 export class EnvConfig {
+  @IsIn(NODE_ENVS)
+  private readonly NODE_ENV: NodeEnv = (process.env.NODE_ENV ??
+    'development') as NodeEnv;
+
   @IsInt()
   @Min(0)
   @Max(65535)
@@ -39,6 +50,32 @@ export class EnvConfig {
   @IsNotEmpty()
   private readonly DB_NAME: string = process.env.DB_NAME as string;
 
+  @IsInt()
+  @Min(1)
+  private readonly DB_POOL_MAX: number = Number(
+    process.env.DB_POOL_MAX ?? 10,
+  );
+
+  @IsInt()
+  @Min(0)
+  private readonly DB_POOL_MIN: number = Number(process.env.DB_POOL_MIN ?? 0);
+
+  @IsInt()
+  @Min(0)
+  private readonly DB_POOL_IDLE_MS: number = Number(
+    process.env.DB_POOL_IDLE_MS ?? 10_000,
+  );
+
+  @IsInt()
+  @Min(0)
+  private readonly DB_POOL_ACQUIRE_MS: number = Number(
+    process.env.DB_POOL_ACQUIRE_MS ?? 30_000,
+  );
+
+  @IsOptional()
+  @IsBooleanString()
+  private readonly DB_SSL: string = process.env.DB_SSL ?? 'false';
+
   @IsString()
   @IsNotEmpty()
   private readonly REDIS_HOST: string = process.env.REDIS_HOST as string;
@@ -58,6 +95,14 @@ export class EnvConfig {
           .join('\n')}`,
       );
     }
+  }
+
+  get nodeEnv(): NodeEnv {
+    return this.NODE_ENV;
+  }
+
+  get isProduction(): boolean {
+    return this.NODE_ENV === 'production';
   }
 
   get port(): number {
@@ -82,6 +127,26 @@ export class EnvConfig {
 
   get dbName(): string {
     return this.DB_NAME;
+  }
+
+  get dbPoolMax(): number {
+    return this.DB_POOL_MAX;
+  }
+
+  get dbPoolMin(): number {
+    return this.DB_POOL_MIN;
+  }
+
+  get dbPoolIdleMs(): number {
+    return this.DB_POOL_IDLE_MS;
+  }
+
+  get dbPoolAcquireMs(): number {
+    return this.DB_POOL_ACQUIRE_MS;
+  }
+
+  get dbSsl(): boolean {
+    return this.DB_SSL === 'true';
   }
 
   get redisHost(): string {
