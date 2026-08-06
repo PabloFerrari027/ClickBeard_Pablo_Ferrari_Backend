@@ -8,6 +8,7 @@ import { REFRESH_TOKEN_REPOSITORY } from './core/application/ports/refresh-token
 import { TOKEN_PROVIDER } from './core/application/ports/token-provider.port';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
+import { AuthController } from './presentation/controllers/auth.controller';
 
 import type { PasswordHasher } from '../identity/core/application/ports/password-hasher.port';
 import type { RefreshTokenRepository } from './core/application/ports/refresh-token-repository.port';
@@ -16,6 +17,7 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
+  controllers: [AuthController],
   providers: [
     {
       provide: LoginUseCase,
