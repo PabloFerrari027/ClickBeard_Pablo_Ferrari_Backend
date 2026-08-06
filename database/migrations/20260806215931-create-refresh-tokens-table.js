@@ -19,7 +19,6 @@ module.exports = {
       token_hash: {
         type: Sequelize.STRING,
         allowNull: false,
-        unique: 'refresh_tokens_token_hash_unique',
       },
       expires_at: {
         type: Sequelize.DATE,
@@ -44,6 +43,14 @@ module.exports = {
 
     await queryInterface.addIndex('refresh_tokens', ['user_id'], {
       name: 'refresh_tokens_user_id_idx',
+    });
+
+    // Column-level `unique` inside createTable() is unreliable across
+    // Sequelize dialects — an explicit index is the only way that's
+    // guaranteed to actually create the constraint.
+    await queryInterface.addIndex('refresh_tokens', ['token_hash'], {
+      name: 'refresh_tokens_token_hash_unique',
+      unique: true,
     });
   },
 

@@ -19,7 +19,6 @@ module.exports = {
           email: {
             type: Sequelize.STRING(255),
             allowNull: false,
-            unique: 'users_email_unique',
           },
           password_hash: {
             type: Sequelize.STRING,
@@ -49,6 +48,15 @@ module.exports = {
 
       await queryInterface.addIndex('users', ['role'], {
         name: 'users_role_idx',
+        transaction,
+      });
+
+      // Column-level `unique` inside createTable() is unreliable across
+      // Sequelize dialects — an explicit index is the only way that's
+      // guaranteed to actually create the constraint.
+      await queryInterface.addIndex('users', ['email'], {
+        name: 'users_email_unique',
+        unique: true,
         transaction,
       });
     });

@@ -12,7 +12,6 @@ module.exports = {
       name: {
         type: Sequelize.STRING(255),
         allowNull: false,
-        unique: 'qualifications_name_unique',
       },
       description: {
         type: Sequelize.TEXT,
@@ -26,6 +25,14 @@ module.exports = {
         type: Sequelize.DATE,
         allowNull: false,
       },
+    });
+
+    // Column-level `unique` inside createTable() is unreliable across
+    // Sequelize dialects — an explicit index is the only way that's
+    // guaranteed to actually create the constraint.
+    await queryInterface.addIndex('qualifications', ['name'], {
+      name: 'qualifications_name_unique',
+      unique: true,
     });
   },
 
