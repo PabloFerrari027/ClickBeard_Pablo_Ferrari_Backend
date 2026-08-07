@@ -1,4 +1,6 @@
 import { Global, Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AccountVerificationModule } from './modules/account-verification/index.module';
 import { AnalyticsModule } from './modules/analytics/index.module';
@@ -11,6 +13,7 @@ import { SchedulingModule } from './modules/scheduling/index.module';
 import { RedisCacheModule } from './shared/cache/redis-cache.module';
 import { EnvConfig } from './shared/config/env.config';
 import { DatabaseModule } from './shared/database/database.module';
+import { HealthModule } from './shared/health/health.module';
 import { QueueModule } from './shared/queue/queue.module';
 
 @Global()
@@ -19,6 +22,15 @@ import { QueueModule } from './shared/queue/queue.module';
     DatabaseModule,
     RedisCacheModule,
     QueueModule,
+    ThrottlerModule.forRootAsync({
+      useFactory: (envConfig: EnvConfig) => ({
+        throttlers: [
+          { ttl: envConfig.throttleTtlMs, limit: envConfig.throttleLimit },
+        ],
+      }),
+      inject: [EnvConfig],
+    }),
+    HealthModule,
     IdentityModule,
     AuthModule,
     AccountVerificationModule,
@@ -29,7 +41,7 @@ import { QueueModule } from './shared/queue/queue.module';
     AnalyticsModule,
   ],
   controllers: [],
-  providers: [EnvConfig],
+  providers: [EnvConfig, { provide: APP_GUARD, useClass: ThrottlerGuard }],
   exports: [EnvConfig],
 })
 export class AppModule {}
