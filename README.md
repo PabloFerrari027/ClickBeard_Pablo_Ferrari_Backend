@@ -2,6 +2,8 @@
 
 Backend de agendamento para barbearias, construído em **NestJS + TypeScript**, com **Arquitetura Hexagonal (Ports & Adapters)** e **Domain-Driven Design**. Este README é a documentação técnica de referência do projeto: reflete exatamente o que está implementado no código nesta branch, sem funcionalidades hipotéticas.
 
+> **Nota de sessão**: as seções sobre cancelamento administrativo de agendamentos (com motivo) e indisponibilidade de barbeiros descrevem o design já aprovado para implementação nesta sessão de trabalho. Elas foram escritas antes do código correspondente para servir de especificação; a implementação segue exatamente o que está descrito aqui. Remova esta nota quando o código estiver implementado e verificado.
+
 ## Índice
 
 1. [Visão Geral](#1-visão-geral)
@@ -36,6 +38,8 @@ ClickBeard é uma API REST para gestão de uma barbearia: cadastro de clientes/b
 - Sessões via **JWT de acesso + refresh token rotativo**, com revogação e lista de tokens no banco.
 - Cadastro de **qualificações** (serviços) e de **barbeiros**, com N:N entre eles.
 - **Agendamento de horários** com grade de 30 minutos, horário comercial fixo, aviso mínimo de 2h para reservar/cancelar, e prevenção de double-booking via índice único parcial no banco.
+- **Cancelamento administrativo de agendamentos**: um `ADMIN` pode cancelar qualquer agendamento informando um motivo obrigatório, sem a janela mínima de 2h que se aplica ao cliente; o cliente é notificado por e-mail com o motivo.
+- **Indisponibilidade de barbeiros** (faltas/doenças): um `ADMIN` registra um período de indisponibilidade por barbeiro, o que bloqueia novas reservas nesse período e **cancela em cascata** (com notificação por e-mail) qualquer agendamento já existente que caia dentro dele.
 - **Analytics administrativo**: métricas de usuários, agendamentos, barbeiros, clientes e ocupação, filtráveis por período.
 - **Cache Redis** de leitura em praticamente todo endpoint de consulta, com invalidação explícita por prefixo a cada escrita relevante.
 - **Eventos de domínio assíncronos** (BullMQ/Redis) para desacoplar efeitos colaterais (e-mails transacionais) do caminho da requisição HTTP.
@@ -46,7 +50,7 @@ ClickBeard é uma API REST para gestão de uma barbearia: cadastro de clientes/b
 - Zero regra de negócio duplicada entre camadas: toda validação vive no Domain (entidades/value objects), nunca em controllers ou DTOs além da validação de shape/tipo.
 - Isolamento estrito entre bounded contexts: nenhum arquivo em `core/` de um módulo importa `infrastructure`/`presentation` de outro módulo.
 - Toda falha de regra de negócio (`DomainError`) é mapeada para o status HTTP correto por um filtro global — nunca cai em 500 genérico.
-- Suite de testes unitários co-localizados (`*.spec.ts` ao lado de cada arquivo) e suite de testes e2e cobrindo as 37 rotas HTTP expostas.
+- Suite de testes unitários co-localizados (`*.spec.ts` ao lado de cada arquivo) e suite de testes e2e cobrindo as 41 rotas HTTP expostas.
 
 ---
 
@@ -226,7 +230,7 @@ ClickBeard_Pablo_Ferrari/
 │       └── utils/                 # Constantes compartilhadas (ex.: MS_PER_DAY)
 ├── database/
 │   ├── config/config.js           # Config lida só pelo sequelize-cli
-│   ├── migrations/                # 7 migrations, uma tabela por arquivo
+│   ├── migrations/                # 9 migrations, uma tabela (ou alteração) por arquivo
 │   └── seeders/                   # Seeder do admin inicial
 ├── test/
 │   ├── support/                   # Helpers de e2e (bootstrap de app, spy de e-mail, auth)
@@ -368,7 +372,7 @@ Todas validadas na inicialização por `EnvConfig` (`src/shared/config/env.confi
 
 ```bash
 npm run docker:up          # sobe app + postgres + redis (build target: development)
-npm run migration:up       # roda as 7 migrations
+npm run migration:up       # roda as 9 migrations
 npm run seed:up            # cria o admin inicial (usa SEED_ADMIN_* do .env)
 npm run docker:logs        # acompanha os logs
 ```
@@ -463,7 +467,7 @@ Cada etapa tem uma responsabilidade única e não conhece a etapa duas posiçõe
 
 Módulos se comunicam de **duas formas**, nunca chamando a Application de outro módulo diretamente:
 
-1. **Eventos de domínio assíncronos** (a forma preferida) — publicados via o Port `EventBus`, entregues por fila (ver seção 10). É assim que `identity`→`notification`, `auth`→`account-verification`, `account-verification`→`notification` se comunicam.
+1. **Eventos de domínio assíncronos** (a forma preferida) — publicados via o Port `EventBus`, entregues por fila (ver seção 10). É assim que `identity`→`notification`, `auth`→`account-verification`, `account-verification`→`notification`, `scheduling`→`notification` e `barber`→`scheduling` se comunicam.
 2. **Ports read-only síncronos**, quando um módulo precisa ler (nunca escrever) um dado que pertence a outro contexto, sem esperar um evento. Exemplo: `scheduling` precisa saber se um barbeiro existe/está ativo e quais qualificações ele tem — em vez de importar o módulo `barber`, declara seu próprio Port `BarberDirectory` (com o shape mínimo que precisa, `BarberSnapshot`), implementado em `infrastructure` por uma query SQL direta nas tabelas `barbers`/`users`/`barbers_qualifications` (não usa os models Sequelize do módulo `barber`). Isso preserva o isolamento do bounded context até na camada de infraestrutura.
 
 ### 7.1 Bounded Contexts e seus Ports de leitura cross-module
@@ -471,6 +475,7 @@ Módulos se comunicam de **duas formas**, nunca chamando a Application de outro 
 | Módulo consumidor | Port declarado | Implementado lendo de |
 |---|---|---|
 | `scheduling` | `BarberDirectory` | tabelas `barbers`/`users`/`barbers_qualifications` (SQL direto, não os models do módulo `barber`) |
+| `scheduling` | `AvailabilityService.isBarberUnavailable`/`getUnavailableSlots` | tabela `barbers_unavailabilities` (SQL direto, mesma técnica — o módulo `barber` é dono da tabela, `scheduling` só a lê) |
 | `barber` | `QualificationRepository` (do módulo `qualification`, injetado via `forwardRef`) | módulo `qualification` diretamente — única exceção ao padrão acima, documentada e deliberada |
 
 ### 7.2 Diagrama de comunicação entre módulos
@@ -487,25 +492,29 @@ graph TB
         Identity["identity"] -->|UserRegistered<br/>PasswordChanged| Bus((QueueEventBus))
         Auth["auth"] -->|UserLoggedIn| Bus
         AccountVerification["account-verification"] -->|VerificationCodeGenerated<br/>VerificationFailed/Succeeded| Bus
-        Scheduling["scheduling"] -->|AppointmentCreated<br/>AppointmentCancelled| Bus
+        Scheduling["scheduling"] -->|AppointmentCreated<br/>AppointmentCancelled<br/>AppointmentCancelledByAdmin| Bus
+        BarberMod["barber"] -->|BarberUnavailabilityCreated| Bus
 
         Bus -->|domain-events.notifications| NotifChannel["fila: NOTIFICATIONS"]
         Bus -->|domain-events.account-verification| AVChannel["fila: ACCOUNT_VERIFICATION"]
+        Bus -->|domain-events.scheduling| SchedChannel["fila: SCHEDULING"]
 
         NotifChannel --> Notification["notification<br/>(DomainEventsConsumer)"]
         AVChannel --> AccountVerificationConsumer["account-verification<br/>(UserLoggedInConsumer)"]
+        SchedChannel --> SchedulingConsumer["scheduling<br/>(BarberUnavailabilityCreatedConsumer)"]
 
         Notification --> SMTP["SMTP"]
+        SchedulingConsumer -->|cancela agendamentos<br/>conflitantes, com motivo| Bus
     end
 ```
 
-Nenhum publisher sabe quem consome seu evento — `identity` publica `UserRegistered` sem saber que `notification` existe. Isso é o que permite adicionar um novo consumidor (ex.: um futuro `AnalyticsCountersConsumer`) sem tocar em nenhum publisher existente.
+Nenhum publisher sabe quem consome seu evento — `identity` publica `UserRegistered` sem saber que `notification` existe. Isso é o que permite adicionar um novo consumidor (ex.: um futuro `AnalyticsCountersConsumer`) sem tocar em nenhum publisher existente. `barber` é o exemplo mais recente disso: publica `BarberUnavailabilityCreated` sem nunca importar nem saber que `scheduling` existe — `scheduling` que decidiu se inscrever nesse evento (via seu próprio consumer) para cancelar agendamentos conflitantes.
 
 ---
 
 ## 8. Banco de Dados
 
-**PostgreSQL 17**, acessado via Sequelize apenas pela camada `infrastructure/persistence` de cada módulo. Schema versionado por 7 migrations (`database/migrations/`, `sequelize-cli`).
+**PostgreSQL 17**, acessado via Sequelize apenas pela camada `infrastructure/persistence` de cada módulo. Schema versionado por 9 migrations (`database/migrations/`, `sequelize-cli`).
 
 ### 8.1 Entidades e relacionamentos
 
@@ -517,6 +526,7 @@ erDiagram
     users ||--o{ appointments : "1:N (customer)"
     barbers ||--o{ appointments : "1:N"
     barbers ||--o{ barbers_qualifications : "1:N"
+    barbers ||--o{ barbers_unavailabilities : "1:N"
     qualifications ||--o{ barbers_qualifications : "1:N"
     qualifications ||--o{ appointments : "1:N"
     refresh_tokens ||--o| refresh_tokens : "replaced_by_token_id"
@@ -570,6 +580,14 @@ erDiagram
         timestamp end_at
         enum status "SCHEDULED|CANCELLED"
         timestamp cancelled_at
+        text cancellation_reason "NULL para autocancelamento do cliente"
+    }
+    barbers_unavailabilities {
+        uuid id PK
+        uuid barber_id FK
+        timestamp start_at
+        timestamp end_at
+        text reason
     }
 ```
 
@@ -587,7 +605,9 @@ erDiagram
 
 **`verification_codes`** — `id UUID PK`, `user_id FK` (`onDelete: CASCADE`), `code_hash` (nunca texto puro), `expires_at`, `attempts INTEGER` default `0`, `consumed_at`/`invalidated_at` opcionais, `created_at`. Índices em `user_id` e `expires_at`.
 
-**`appointments`** — `id UUID PK`, `customer_id FK → users` (`RESTRICT`), `barber_id FK → barbers` (`RESTRICT`), `qualification_id FK → qualifications` (`RESTRICT`), `start_at`/`end_at`, `status ENUM('SCHEDULED','CANCELLED')` default `SCHEDULED`, `cancelled_at` opcional, `created_at`, `updated_at`. Índices em `customer_id` e `start_at`.
+**`appointments`** — `id UUID PK`, `customer_id FK → users` (`RESTRICT`), `barber_id FK → barbers` (`RESTRICT`), `qualification_id FK → qualifications` (`RESTRICT`), `start_at`/`end_at`, `status ENUM('SCHEDULED','CANCELLED')` default `SCHEDULED`, `cancelled_at` opcional, `cancellation_reason TEXT` opcional (preenchido apenas quando o cancelamento é administrativo — `NULL` quando o próprio cliente cancela), `created_at`, `updated_at`. Índices em `customer_id` e `start_at`.
+
+**`barbers_unavailabilities`** — `id UUID PK`, `barber_id FK → barbers` (`onDelete: CASCADE`), `start_at`/`end_at TIMESTAMP` (não `DATEONLY` — permite indisponibilidade parcial de um dia, ex. "sai às 14h hoje"), `reason TEXT` obrigatório, `created_at`. Índices em `barber_id` e `start_at`. Sem constraint de banco contra sobreposição de períodos do mesmo barbeiro (não expressável como índice único simples); a checagem é em nível de aplicação (`existsOverlapping`), mesmo trade-off já aceito em outros pontos do sistema.
 
 ### 8.3 Constraint que garante a regra de negócio mais importante
 
@@ -644,6 +664,8 @@ Toda escrita relevante invalida por **prefixo** (`deleteByPrefix`, via `SCAN` + 
 - `CreateBarberUseCase`/`UpdateBarberUseCase`/`AddQualificationToBarberUseCase`/`RemoveQualificationFromBarberUseCase` invalidam `barber:{id}` e `barbers:list:*`.
 - `CreateQualificationUseCase`/`UpdateQualificationUseCase`/`DeleteQualificationUseCase` invalidam a chave única `qualifications`.
 - `ChangePasswordUseCase`/`ChangeUserRoleUseCase`/`DeactivateUserUseCase`/`ActivateUserUseCase` invalidam `user:{id}`.
+- `CancelAppointmentByAdminUseCase` invalida exatamente os mesmos prefixos de `CancelAppointmentUseCase` (é o mesmo efeito de negócio — um agendamento deixou de estar `SCHEDULED` — só muda quem o disparou e se um motivo foi registrado).
+- `CreateBarberUnavailabilityUseCase`/`DeleteBarberUnavailabilityUseCase` invalidam `time-slots:{barberId}:*` via um novo helper, `CacheKeyGenerator.barberAllTimeSlotsPrefix(barberId)` — **sem** o segmento de data que `barberTimeSlotsPrefix` normalmente exige, porque um período de indisponibilidade pode cobrir vários dias de uma vez; invalidar dia a dia seria mais uma chamada por dia coberto, sem necessidade real dado que `AVAILABLE_TIME_SLOTS` já expira em 30s.
 
 ### 9.4 Impacto de uma falha do Redis
 
@@ -660,21 +682,26 @@ graph LR
     subgraph Channels["Filas (BullMQ), uma por assinante"]
         C1["domain-events.notifications"]
         C2["domain-events.account-verification"]
+        C3["domain-events.scheduling"]
     end
 
     Bus(["QueueEventBus.publish(event)"]) -->|enqueue em TODAS as filas| C1
     Bus -->|enqueue em TODAS as filas| C2
+    Bus -->|enqueue em TODAS as filas| C3
 
     C1 --> DEC["DomainEventsConsumer<br/>(notification)"]
     C2 --> ULC["UserLoggedInConsumer<br/>(account-verification)"]
+    C3 --> BUC["BarberUnavailabilityCreatedConsumer<br/>(scheduling)"]
 
     DEC --> DNU["DispatchNotificationUseCase"]
     DNU -->|se existir template<br/>e recipientEmail| SMTP["SmtpNotificationSender"]
 
     ULC -->|filtra name === 'UserLoggedIn'| GVC["GenerateVerificationCodeUseCase"]
+    BUC -->|filtra name === 'BarberUnavailabilityCreated'| CAU["CancelAppointmentsForBarberUnavailabilityUseCase"]
+    CAU -->|publica AppointmentCancelledByAdmin<br/>por agendamento afetado| Bus
 ```
 
-Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consumer* — dois `Worker`s na mesma fila dividem os jobs entre si, um nunca recebe o que o outro já pegou. Como `notification` e `account-verification` precisam **cada um** ver todo `UserLoggedIn`, cada assinante tem sua própria fila nomeada (`DOMAIN_EVENTS_CHANNELS`), e o publisher grava a cópia do evento em todas elas — o mesmo formato de um tópico SNS alimentando várias filas SQS.
+Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consumer* — dois `Worker`s na mesma fila dividem os jobs entre si, um nunca recebe o que o outro já pegou. Como `notification`, `account-verification` e `scheduling` precisam **cada um** ver os eventos que lhe interessam de forma independente, cada assinante tem sua própria fila nomeada (`DOMAIN_EVENTS_CHANNELS`), e o publisher grava a cópia do evento em todas elas — o mesmo formato de um tópico SNS alimentando várias filas SQS. `DOMAIN_EVENTS_CHANNELS` é o único ponto de código que precisa mudar para adicionar um assinante novo — `QueueEventBus.publish` itera `Object.values(DOMAIN_EVENTS_CHANNELS)` genericamente, nada está hardcoded para "2 canais".
 
 ### 10.1 Catálogo de eventos
 
@@ -687,7 +714,9 @@ Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consu
 | `VerificationFailed` | `ValidateVerificationCodeUseCase` | `{ userId, reason }` | não | nenhum consumidor hoje (publicado para observabilidade/uso futuro) |
 | `VerificationSucceeded` | `ValidateVerificationCodeUseCase` | `{ userId }` | não | nenhum consumidor hoje |
 | `AppointmentCreated` | `CreateAppointmentUseCase` | `{ appointmentId, customerId, barberId, qualificationId, startAt }` | não | nenhum consumidor hoje |
-| `AppointmentCancelled` | `CancelAppointmentUseCase` | `{ appointmentId, customerId, barberId, startAt }` | não | nenhum consumidor hoje |
+| `AppointmentCancelled` | `CancelAppointmentUseCase` (cliente cancela o próprio) | `{ appointmentId, customerId, barberId, startAt }` | não | nenhum consumidor hoje |
+| `AppointmentCancelledByAdmin` | `CancelAppointmentByAdminUseCase` **e** `CancelAppointmentsForBarberUnavailabilityUseCase` (cascata de indisponibilidade) | `{ appointmentId, customerId, barberId, startAt, reason, name }` | sim | `notification` (e-mail "seu agendamento foi cancelado", com o motivo) |
+| `BarberUnavailabilityCreated` | `CreateBarberUnavailabilityUseCase` | `{ unavailabilityId, barberId, startAt, endAt, reason }` | não | `scheduling` (`BarberUnavailabilityCreatedConsumer`, cancela em cascata todo agendamento `SCHEDULED` do barbeiro que caia dentro do período) |
 
 Eventos sem `recipientEmail` ou sem template cadastrado em `StaticMessageTemplateProvider` simplesmente não geram e-mail — `DispatchNotificationUseCase` faz no-op nesses casos por design, não é uma lacuna.
 
@@ -747,7 +776,43 @@ sequenceDiagram
     AVCtrl-->>C: 200 {accessToken, refreshToken}
 ```
 
-### 10.3 Job recorrente (não é um evento, mas usa a mesma infraestrutura BullMQ)
+### 10.3 Fluxo: indisponibilidade de barbeiro → cancelamento em cascata
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant BarbersCtrl as BarbersController
+    participant CreateUnav as CreateBarberUnavailabilityUseCase
+    participant Bus as QueueEventBus
+    participant BUC as BarberUnavailabilityCreatedConsumer
+    participant CancelForUnav as CancelAppointmentsForBarberUnavailabilityUseCase
+    participant Appt as Appointment (entidade)
+    participant DEC as DomainEventsConsumer
+    participant SMTP as SmtpNotificationSender
+
+    Admin->>BarbersCtrl: POST /barbers/:id/unavailabilities {startAt,endAt,reason}
+    BarbersCtrl->>CreateUnav: execute()
+    CreateUnav->>CreateUnav: valida período, checa overlap
+    CreateUnav->>Bus: publish(BarberUnavailabilityCreatedEvent)
+    CreateUnav-->>BarbersCtrl: {unavailability}
+    BarbersCtrl-->>Admin: 201
+
+    Note over Bus: invalidação de cache (time-slots do barbeiro)<br/>acontece direto no use case, não pelo evento
+
+    Bus->>BUC: evento na fila scheduling
+    BUC->>CancelForUnav: execute({barberId, startAt, endAt, reason})
+    CancelForUnav->>CancelForUnav: busca agendamentos SCHEDULED do<br/>barbeiro no intervalo
+    loop cada agendamento afetado
+        CancelForUnav->>Appt: cancelByAdmin(now, "Barber unavailable: "+reason)
+        CancelForUnav->>Bus: publish(AppointmentCancelledByAdminEvent)
+        Bus->>DEC: evento na fila notifications
+        DEC->>SMTP: envia e-mail ao cliente com o motivo
+    end
+```
+
+Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmin` — a cascata não é um caminho de notificação separado, é o mesmo evento e o mesmo template, só que publicado por um caminho diferente (`CancelAppointmentsForBarberUnavailabilityUseCase` em vez de `CancelAppointmentByAdminUseCase`).
+
+### 10.4 Job recorrente (não é um evento, mas usa a mesma infraestrutura BullMQ)
 
 `ExpiredCodesSweepScheduler` roda `InvalidateExpiredVerificationCodesUseCase` a cada 15 minutos, numa fila BullMQ própria (`account-verification.expired-codes-sweep`) com `repeat.jobId` fixo — o BullMQ deduplica pelo `jobId`, então rodar a aplicação em várias instâncias nunca dispara a varredura mais de uma vez por intervalo (um `setInterval` por processo, em contraste, disparia uma vez por instância).
 
@@ -796,6 +861,11 @@ sequenceDiagram
 | Um barbeiro precisa de ao menos 1 qualificação | Na criação e ao tentar remover a última (`BarberMustHaveAtLeastOneQualificationError`) |
 | Data de contratação não pode ser futura | `InvalidHiringDateError` |
 | Qualificação não pode ser adicionada duas vezes | `QualificationAlreadyAssignedError` |
+| Período de indisponibilidade precisa ter fim depois do início | `InvalidUnavailabilityPeriodError` |
+| Motivo da indisponibilidade é obrigatório (mín. 3 caracteres, trimado) | `UnavailabilityReasonRequiredError` |
+| Períodos de indisponibilidade do mesmo barbeiro não podem se sobrepor | `BarberUnavailabilityOverlapError` — checagem em nível de aplicação, sem constraint de banco (não há índice único simples para "sem overlap de intervalo") |
+| Criar uma indisponibilidade cancela em cascata qualquer agendamento `SCHEDULED` do barbeiro que caia no período | Via evento `BarberUnavailabilityCreated`, consumido por `scheduling` — ver seção 10.3. Cada cancelamento usa o mesmo mecanismo/motivo/notificação do cancelamento administrativo (seção 11.6) |
+| Remover uma indisponibilidade **não** ressuscita agendamentos que foram cancelados por ela | Limitação aceita e documentada — `DeleteBarberUnavailabilityUseCase` só libera o período para novas reservas a partir de agora |
 
 ### 11.5 Qualification
 
@@ -814,7 +884,10 @@ sequenceDiagram
 | **Aviso mínimo de 2 horas**, simétrico | `MIN_APPOINTMENT_NOTICE_MS = 2h` — se aplica tanto para **reservar** (`AppointmentTooSoonError`) quanto para **cancelar** (`CancellationWindowExpiredError`) um horário |
 | Sem double-booking | Checado na Application (`AvailabilityService.isBarberAvailable`, dentro de uma transação) **e** garantido no banco pelo índice único parcial (seção 8.3) — dupla camada de proteção |
 | Barbeiro precisa ter a qualificação pedida | `BarberDoesNotHaveQualificationError` |
-| Cancelamento só pelo próprio cliente | `CancelAppointmentUseCase` não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento (diferente de `GetAppointmentUseCase`, que permite dono OU admin) |
+| Cancelamento pelo cliente é só do próprio agendamento | `CancelAppointmentUseCase` (`DELETE /appointments/:id`) não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento; continua respeitando a janela mínima de 2h |
+| **ADMIN pode cancelar qualquer agendamento, com motivo obrigatório** | `CancelAppointmentByAdminUseCase` (`PATCH /appointments/:id/cancel`) — **ignora** a janela mínima de 2h (`cancelByAdmin`, distinto de `cancel`), motivo obrigatório (`CancellationReasonRequiredError` senão) persistido em `cancellation_reason`, cliente notificado por e-mail (`AppointmentCancelledByAdminEvent`) |
+| Não é possível reservar um horário em que o barbeiro está marcado como indisponível | `BarberUnavailableError` (409, distinto de `BarberTimeSlotConflictError`) — checado via `AvailabilityService.isBarberUnavailable` dentro da mesma transação da checagem de conflito |
+| A listagem de horários disponíveis exclui os horários bloqueados por indisponibilidade | `ListAvailableTimeSlotsUseCase` combina `getBookedSlots` e `getUnavailableSlots` |
 | Listagens administrativas (`/today`, `/future`) exigem `ADMIN` | Reforçado tanto no guard do controller quanto no `ensureRequesterIsAdmin` dentro do use case |
 
 ### 11.7 Analytics
@@ -832,11 +905,13 @@ Toda regra de negócio violada lança uma subclasse de uma das 5 categorias base
 
 | Categoria base | Status HTTP | Qtde de subclasses no projeto | Exemplos |
 |---|---|---|---|
-| `NotFoundError` | 404 | 8 | `BarberNotFoundError`, `QualificationNotFoundError`, `AppointmentNotFoundError`, `VerificationCodeNotFoundError` |
-| `ConflictError` | 409 | 11 | `UserAlreadyExistsError`, `BarberTimeSlotConflictError`, `QualificationInUseError`, `AppointmentAlreadyCancelledError` |
+| `NotFoundError` | 404 | 9 | `BarberNotFoundError`, `QualificationNotFoundError`, `AppointmentNotFoundError`, `VerificationCodeNotFoundError`, `BarberUnavailabilityNotFoundError` |
+| `ConflictError` | 409 | 13 | `UserAlreadyExistsError`, `BarberTimeSlotConflictError`, `QualificationInUseError`, `AppointmentAlreadyCancelledError`, `BarberUnavailableError`, `BarberUnavailabilityOverlapError` |
 | `UnauthorizedError` | 401 | 4 | `InvalidCredentialsError`, `InvalidRefreshTokenError`, `RefreshTokenExpiredError` |
 | `ForbiddenError` | 403 | 6 | `UserIsNotAdminError` (×5, um por módulo que reimplementa a policy), `AppointmentAccessDeniedError` |
-| `ValidationError` | 400 | ~25 | `WeakPasswordError`, `InvalidTimeSlotError`, `AppointmentTooSoonError`, `InvalidVerificationCodeError`, `CancellationWindowExpiredError` |
+| `ValidationError` | 400 | ~28 | `WeakPasswordError`, `InvalidTimeSlotError`, `AppointmentTooSoonError`, `InvalidVerificationCodeError`, `CancellationWindowExpiredError`, `CancellationReasonRequiredError`, `InvalidUnavailabilityPeriodError`, `UnavailabilityReasonRequiredError` |
+
+*(Contagens desta tabela serão reconferidas por grep após a implementação das duas features em andamento — ver seção 18 se algo ficar defasado.)*
 
 `PersistenceError` (erros de infraestrutura de banco) e `MessageQueueUnavailableError` **deliberadamente não** estendem `DomainError` — continuam caindo no filtro default do Nest e retornando 500, porque uma falha de infraestrutura não é uma regra de negócio violada (ver seção 13).
 
@@ -876,10 +951,10 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
-| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento, `/today` e `/future` restritos a admin |
+| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
 
-**37 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
+**41 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
 
 ```bash
 npm run test:e2e     # jest --config ./test/jest-e2e.json --runInBand --forceExit
@@ -1032,6 +1107,7 @@ Não implementado — não há correlação de request id nem tracing distribuí
 | 7 | Como um módulo lê dado de outro sem acoplar aos seus models internos? | Importar o módulo e seu repositório Sequelize diretamente | Port read-only próprio (`BarberDirectory` em `scheduling`), implementado com SQL direto às tabelas do outro módulo | Mantém o bounded context isolado até na infraestrutura — `scheduling` não sabe (nem precisa saber) que `barber` existe como módulo Nest, só que existe uma tabela com esse shape |
 | 8 | O `Clock` deveria ser uma abstração injetável (Port) ou `new Date()` direto? | Port `Clock` injetável (permite mockar tempo em teste sem `jest.useFakeTimers`) | Removido — `new Date()` direto + `jest.useFakeTimers()` nos testes que precisam controlar tempo | Avaliado como abstração desnecessária: nenhum outro adapter de tempo jamais existiria além do relógio do sistema, e Jest já resolve o problema de teste sem indireção extra em produção |
 | 9 | O módulo `analytics` deveria ter um repositório próprio de contadores (`AnalyticsRepository`, Redis) para métricas incrementais? | Manter a implementação (já pronta, Redis-backed, incremento por evento) | Removida — métricas são calculadas sob demanda via query SQL agregada, não por contador incremental | Sem nenhum consumidor real publicando nos contadores, era código morto adiantado; um contador incremental também só serve totais não-filtrados por período, que é uma fração pequena do que as rotas de analytics realmente precisam (a maioria filtra por `DateRange`) |
+| 10 | Como cancelar agendamentos conflitantes quando um barbeiro fica indisponível, sem violar o isolamento de bounded context (`barber` não pode chamar a Application de `scheduling` diretamente)? | Chamada direta de `barber` para um use case de `scheduling` (quebra a regra de dependência unidirecional já estabelecida); um Port read-only que `scheduling` consultasse sob demanda (não resolve — cancelar é uma escrita, não uma leitura) | Terceiro canal de evento dedicado (`DOMAIN_EVENTS_CHANNELS.SCHEDULING`), `barber` publica `BarberUnavailabilityCreated` sem saber quem consome, `scheduling` se inscreve com seu próprio consumer | Mesma lógica já usada para `identity`→`account-verification` (decisão #2): o publisher nunca precisa saber quem consome; qualquer módulo pode reagir a um evento de outro sem criar uma dependência de importação nova |
 
 ---
 
