@@ -1,6 +1,6 @@
-import { DomainError } from './domain.error';
+import { ConflictError } from '../../../../../shared/domain/errors/conflict.error';
 
-export class AppointmentAlreadyCancelledError extends DomainError {
+export class AppointmentAlreadyCancelledError extends ConflictError {
   constructor() {
     super('Appointment has already been cancelled.');
   }

@@ -1,6 +1,6 @@
-import { DomainError } from './domain.error';
+import { ValidationError } from '../../../../../shared/domain/errors/validation.error';
 
-export class VerificationCodeExpiredError extends DomainError {
+export class VerificationCodeExpiredError extends ValidationError {
   constructor() {
     super('Verification code has expired.');
   }
