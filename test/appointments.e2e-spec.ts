@@ -241,4 +241,98 @@ describe('Appointments (e2e)', () => {
       );
     });
   });
+
+  describe('PATCH /appointments/:id/cancel', () => {
+    it('rejects an unauthenticated request with 401', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/appointments/00000000-0000-0000-0000-000000000000/cancel')
+        .send({ reason: 'Barber is sick' });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects a non-admin with 403', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(ownerSession.accessToken))
+        .send({ reason: 'Barber is sick' });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('rejects a missing/too short reason with 400', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'x' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 404 for a non-existent appointment', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/appointments/00000000-0000-0000-0000-000000000000/cancel')
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'Barber is sick' });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('lets an admin cancel any appointment with a reason, bypassing the 2h window, and notifies the customer by email', async () => {
+      const { user: ownerUser, session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'Barber called in sick' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('CANCELLED');
+      expect(response.body.cancellationReason).toBe('Barber called in sick');
+
+      const notification = await notifications.waitFor(
+        (candidate) =>
+          candidate.recipient === ownerUser.email &&
+          candidate.subject === 'Your ClickBeard appointment was cancelled',
+      );
+      expect(notification.body).toContain('Barber called in sick');
+
+      const alreadyCancelled = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'Trying again' });
+      expect(alreadyCancelled.status).toBe(409);
+    });
+  });
 });
