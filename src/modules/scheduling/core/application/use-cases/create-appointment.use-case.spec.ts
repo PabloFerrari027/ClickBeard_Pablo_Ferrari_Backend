@@ -7,6 +7,7 @@ import { AppointmentTooSoonError } from '../../domain/errors/appointment-too-soo
 import { BarberDoesNotHaveQualificationError } from '../../domain/errors/barber-does-not-have-qualification.error';
 import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error';
 import { BarberTimeSlotConflictError } from '../../domain/errors/barber-time-slot-conflict.error';
+import { BarberUnavailableError } from '../../domain/errors/barber-unavailable.error';
 import { InvalidTimeSlotError } from '../../domain/errors/invalid-time-slot.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
@@ -63,10 +64,13 @@ describe('CreateAppointmentUseCase', () => {
       findByCustomerId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
+      findScheduledByBarberAndRange: jest.fn(),
     };
     availabilityService = {
       isBarberAvailable: jest.fn(),
       getBookedSlots: jest.fn(),
+      isBarberUnavailable: jest.fn(),
+      getUnavailableSlots: jest.fn(),
     };
     userRepository = {
       save: jest.fn(),
@@ -94,6 +98,7 @@ describe('CreateAppointmentUseCase', () => {
     userRepository.findById.mockResolvedValue(buildCustomer());
     barberDirectory.findById.mockResolvedValue(buildBarberSnapshot());
     availabilityService.isBarberAvailable.mockResolvedValue(true);
+    availabilityService.isBarberUnavailable.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -191,6 +196,15 @@ describe('CreateAppointmentUseCase', () => {
 
     await expect(useCase.execute(validInput)).rejects.toThrow(
       BarberTimeSlotConflictError,
+    );
+    expect(appointmentRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('throws BarberUnavailableError when the barber is marked unavailable for the slot', async () => {
+    availabilityService.isBarberUnavailable.mockResolvedValue(true);
+
+    await expect(useCase.execute(validInput)).rejects.toThrow(
+      BarberUnavailableError,
     );
     expect(appointmentRepository.save).not.toHaveBeenCalled();
   });
