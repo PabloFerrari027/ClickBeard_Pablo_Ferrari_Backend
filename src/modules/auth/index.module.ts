@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { SequelizeModule } from '@nestjs/sequelize';
 
 import { PASSWORD_HASHER } from '../identity/core/application/ports/password-hasher.port';
@@ -9,6 +10,7 @@ import { REFRESH_TOKEN_REPOSITORY } from './core/application/ports/refresh-token
 import { TOKEN_PROVIDER } from './core/application/ports/token-provider.port';
 import { RefreshTokenModel } from './infrastructure/persistence/models/refresh-token.model';
 import { SequelizeRefreshTokenRepository } from './infrastructure/persistence/repositories/sequelize-refresh-token.repository';
+import { JwtTokenProvider } from './infrastructure/security/jwt-token-provider';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { IdentityModule } from '../identity/index.module';
 import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
@@ -20,14 +22,25 @@ import type { TokenProvider } from './core/application/ports/token-provider.port
 import type { UserRepository } from '../identity/core/application/ports/user-repository.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
+/**
+ * `IdentityModule` needs `TOKEN_PROVIDER` back (its own `UsersController`
+ * uses the `@Auth()` guard), so this is a genuine circular module
+ * dependency — resolved with `forwardRef`, the same pattern
+ * Barber⇄Qualification already establishes.
+ */
 @Module({
-  imports: [IdentityModule, SequelizeModule.forFeature([RefreshTokenModel])],
+  imports: [
+    forwardRef(() => IdentityModule),
+    SequelizeModule.forFeature([RefreshTokenModel]),
+    JwtModule.register({}),
+  ],
   controllers: [AuthController],
   providers: [
     {
       provide: REFRESH_TOKEN_REPOSITORY,
       useClass: SequelizeRefreshTokenRepository,
     },
+    { provide: TOKEN_PROVIDER, useClass: JwtTokenProvider },
     {
       provide: LoginUseCase,
       useFactory: (
@@ -60,5 +73,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       inject: [REFRESH_TOKEN_REPOSITORY, TOKEN_PROVIDER],
     },
   ],
+  exports: [REFRESH_TOKEN_REPOSITORY, TOKEN_PROVIDER, IdentityModule],
 })
 export class AuthModule {}
