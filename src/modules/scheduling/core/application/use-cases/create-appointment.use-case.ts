@@ -19,7 +19,6 @@ import { AppointmentRepository } from '../ports/appointment-repository.port';
 import { AvailabilityService } from '../ports/availability-service.port';
 import { BarberDirectory } from '../ports/barber-directory.port';
 import { TransactionManager } from '../ports/transaction-manager.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
@@ -33,7 +32,6 @@ export class CreateAppointmentUseCase implements UseCase<
     private readonly userRepository: UserRepository,
     private readonly barberDirectory: BarberDirectory,
     private readonly transactionManager: TransactionManager,
-    private readonly clock: Clock,
     private readonly eventBus: EventBus,
   ) {}
 
@@ -57,7 +55,7 @@ export class CreateAppointmentUseCase implements UseCase<
     }
 
     const timeSlot = TimeSlot.create(input.startAt);
-    const now = this.clock.now();
+    const now = new Date();
 
     const noticeMs = timeSlot.getStart().getTime() - now.getTime();
 

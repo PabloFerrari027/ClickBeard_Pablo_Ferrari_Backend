@@ -98,7 +98,9 @@ describe('RefreshTokenUseCase', () => {
     expect(storedToken.isRevoked()).toBe(true);
     expect(storedToken.getReplacedByTokenId()).toBeTruthy();
     expect(refreshTokenRepository.save).toHaveBeenCalledTimes(2);
-    expect(refreshTokenRepository.save).toHaveBeenNthCalledWith(1, storedToken);
+    // The rotated token must be persisted before the old one, since the
+    // old row's replaced_by_token_id foreign key points at it.
+    expect(refreshTokenRepository.save).toHaveBeenNthCalledWith(2, storedToken);
   });
 
   it('throws InvalidRefreshTokenError when the token signature is invalid', async () => {

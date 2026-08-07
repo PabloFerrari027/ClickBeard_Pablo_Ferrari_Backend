@@ -1,14 +1,14 @@
 import { CustomRangeRequiredError } from '../errors/custom-range-required.error';
 import { InvalidDateRangeError } from '../errors/invalid-date-range.error';
 import { PeriodPreset } from '../enums/period-preset.enum';
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+import { MS_PER_DAY } from '../../../../../shared/utils/time.constants';
 
 /**
  * An inclusive [start, end] window used to scope every analytics query.
  * Presets are resolved relative to a caller-supplied `now` (never
- * `new Date()` internally) so use cases stay testable through the Clock
- * port, exactly like TimeSlot does in the Scheduling module.
+ * `new Date()` internally) so this stays deterministic and testable
+ * independent of whatever the calling use case does for "now",
+ * exactly like TimeSlot does in the Scheduling module.
  */
 export class DateRange {
   private constructor(

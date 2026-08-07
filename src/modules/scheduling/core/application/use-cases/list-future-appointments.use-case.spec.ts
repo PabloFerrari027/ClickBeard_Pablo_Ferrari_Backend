@@ -8,7 +8,6 @@ import { AppointmentStatus } from '../../domain/enums/appointment-status.enum';
 import { Appointment } from '../../domain/entities/appointment.entity';
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { ListFutureAppointmentsUseCase } from './list-future-appointments.use-case';
 
 function buildAppointment(): Appointment {
@@ -41,12 +40,13 @@ function buildUser(id: string, role: UserRole): User {
 describe('ListFutureAppointmentsUseCase', () => {
   let appointmentRepository: jest.Mocked<AppointmentRepository>;
   let userRepository: jest.Mocked<UserRepository>;
-  let clock: jest.Mocked<Clock>;
   let useCase: ListFutureAppointmentsUseCase;
 
   const now = new Date(2026, 0, 10, 12, 0, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     appointmentRepository = {
       save: jest.fn(),
       findById: jest.fn(),
@@ -59,14 +59,14 @@ describe('ListFutureAppointmentsUseCase', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
     };
-    clock = {
-      now: jest.fn().mockReturnValue(now),
-    };
     useCase = new ListFutureAppointmentsUseCase(
       appointmentRepository,
       userRepository,
-      clock,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns upcoming paginated appointments for an admin requester', async () => {

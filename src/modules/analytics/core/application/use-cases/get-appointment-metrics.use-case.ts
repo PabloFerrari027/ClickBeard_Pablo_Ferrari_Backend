@@ -6,7 +6,6 @@ import {
 import { toDateRange } from '../mappers/date-range.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { AppointmentMetricsQuery } from '../ports/appointment-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 import { PeriodPreset } from '../../domain/enums/period-preset.enum';
 import { DateRange } from '../../domain/value-objects/date-range.value-object';
@@ -20,7 +19,6 @@ export class GetAppointmentMetricsUseCase implements UseCase<
   constructor(
     private readonly appointmentMetricsQuery: AppointmentMetricsQuery,
     private readonly userRepository: UserRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -28,8 +26,8 @@ export class GetAppointmentMetricsUseCase implements UseCase<
   ): Promise<GetAppointmentMetricsOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const now = this.clock.now();
-    const range = toDateRange(input.filter, this.clock);
+    const now = new Date();
+    const range = toDateRange(input.filter, now);
     const todayRange = DateRange.fromPreset(PeriodPreset.TODAY, now);
     const weekRange = DateRange.fromPreset(PeriodPreset.WEEK, now);
     const monthRange = DateRange.fromPreset(PeriodPreset.MONTH, now);

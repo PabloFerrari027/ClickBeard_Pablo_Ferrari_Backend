@@ -1,6 +1,6 @@
-import { DomainError } from './domain.error';
+import { ValidationError } from '../../../../../shared/domain/errors/validation.error';
 
-export class AppointmentTooSoonError extends DomainError {
+export class AppointmentTooSoonError extends ValidationError {
   constructor() {
     super('Appointments must be booked at least 2 hours in advance.');
   }

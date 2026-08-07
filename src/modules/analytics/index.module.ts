@@ -10,14 +10,19 @@ import { GetCustomerMetricsUseCase } from './core/application/use-cases/get-cust
 import { GetDashboardMetricsUseCase } from './core/application/use-cases/get-dashboard-metrics.use-case';
 import { GetOccupationMetricsUseCase } from './core/application/use-cases/get-occupation-metrics.use-case';
 import { GetUserMetricsUseCase } from './core/application/use-cases/get-user-metrics.use-case';
+import { SequelizeAppointmentMetricsQuery } from './infrastructure/persistence/queries/sequelize-appointment-metrics.query';
+import { SequelizeBarberMetricsQuery } from './infrastructure/persistence/queries/sequelize-barber-metrics.query';
+import { SequelizeCustomerMetricsQuery } from './infrastructure/persistence/queries/sequelize-customer-metrics.query';
+import { SequelizeUserMetricsQuery } from './infrastructure/persistence/queries/sequelize-user-metrics.query';
 import { AnalyticsController } from './presentation/controllers/analytics.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
+import { IdentityModule } from '../identity/index.module';
+import { AuthModule } from '../auth/index.module';
 import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
 import { CacheResource } from '../../shared/application/cache/cache-resource.enum';
 import { CACHE_MANAGER } from '../../shared/application/ports/cache-manager.port';
 import { CACHE_POLICY } from '../../shared/application/ports/cache-policy.port';
-import { CLOCK } from '../../shared/application/ports/clock.port';
 
 import type { DateRangeFilterDto } from './core/application/dtos/date-range-filter.dto';
 import type { AppointmentMetricsQuery } from './core/application/ports/appointment-metrics-query.port';
@@ -27,7 +32,6 @@ import type { UserMetricsQuery } from './core/application/ports/user-metrics-que
 import type { UserRepository } from '../identity/core/application/ports/user-repository.port';
 import type { CacheManager } from '../../shared/application/ports/cache-manager.port';
 import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
-import type { Clock } from '../../shared/application/ports/clock.port';
 
 /**
  * Every Analytics read is cached by period alone, never by requesterId:
@@ -46,19 +50,29 @@ function periodOf(filter: DateRangeFilterDto): string {
 }
 
 @Module({
+  imports: [IdentityModule, AuthModule],
   controllers: [AnalyticsController],
   providers: [
+    { provide: USER_METRICS_QUERY, useClass: SequelizeUserMetricsQuery },
+    {
+      provide: APPOINTMENT_METRICS_QUERY,
+      useClass: SequelizeAppointmentMetricsQuery,
+    },
+    { provide: BARBER_METRICS_QUERY, useClass: SequelizeBarberMetricsQuery },
+    {
+      provide: CUSTOMER_METRICS_QUERY,
+      useClass: SequelizeCustomerMetricsQuery,
+    },
     {
       provide: GetUserMetricsUseCase,
       useFactory: (
         userMetricsQuery: UserMetricsQuery,
         userRepository: UserRepository,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
         new CachedUseCase(
-          new GetUserMetricsUseCase(userMetricsQuery, userRepository, clock),
+          new GetUserMetricsUseCase(userMetricsQuery, userRepository),
           cacheManager,
           cachePolicy,
           {
@@ -70,7 +84,6 @@ function periodOf(filter: DateRangeFilterDto): string {
       inject: [
         USER_METRICS_QUERY,
         USER_REPOSITORY,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],
@@ -80,7 +93,6 @@ function periodOf(filter: DateRangeFilterDto): string {
       useFactory: (
         appointmentMetricsQuery: AppointmentMetricsQuery,
         userRepository: UserRepository,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
@@ -88,7 +100,6 @@ function periodOf(filter: DateRangeFilterDto): string {
           new GetAppointmentMetricsUseCase(
             appointmentMetricsQuery,
             userRepository,
-            clock,
           ),
           cacheManager,
           cachePolicy,
@@ -101,7 +112,6 @@ function periodOf(filter: DateRangeFilterDto): string {
       inject: [
         APPOINTMENT_METRICS_QUERY,
         USER_REPOSITORY,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],
@@ -111,16 +121,11 @@ function periodOf(filter: DateRangeFilterDto): string {
       useFactory: (
         barberMetricsQuery: BarberMetricsQuery,
         userRepository: UserRepository,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
         new CachedUseCase(
-          new GetBarberMetricsUseCase(
-            barberMetricsQuery,
-            userRepository,
-            clock,
-          ),
+          new GetBarberMetricsUseCase(barberMetricsQuery, userRepository),
           cacheManager,
           cachePolicy,
           {
@@ -132,7 +137,6 @@ function periodOf(filter: DateRangeFilterDto): string {
       inject: [
         BARBER_METRICS_QUERY,
         USER_REPOSITORY,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],
@@ -142,16 +146,11 @@ function periodOf(filter: DateRangeFilterDto): string {
       useFactory: (
         customerMetricsQuery: CustomerMetricsQuery,
         userRepository: UserRepository,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
         new CachedUseCase(
-          new GetCustomerMetricsUseCase(
-            customerMetricsQuery,
-            userRepository,
-            clock,
-          ),
+          new GetCustomerMetricsUseCase(customerMetricsQuery, userRepository),
           cacheManager,
           cachePolicy,
           {
@@ -166,7 +165,6 @@ function periodOf(filter: DateRangeFilterDto): string {
       inject: [
         CUSTOMER_METRICS_QUERY,
         USER_REPOSITORY,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],
@@ -176,16 +174,11 @@ function periodOf(filter: DateRangeFilterDto): string {
       useFactory: (
         barberMetricsQuery: BarberMetricsQuery,
         userRepository: UserRepository,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
         new CachedUseCase(
-          new GetOccupationMetricsUseCase(
-            barberMetricsQuery,
-            userRepository,
-            clock,
-          ),
+          new GetOccupationMetricsUseCase(barberMetricsQuery, userRepository),
           cacheManager,
           cachePolicy,
           {
@@ -197,7 +190,6 @@ function periodOf(filter: DateRangeFilterDto): string {
       inject: [
         BARBER_METRICS_QUERY,
         USER_REPOSITORY,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],
@@ -210,7 +202,6 @@ function periodOf(filter: DateRangeFilterDto): string {
         barberMetricsQuery: BarberMetricsQuery,
         customerMetricsQuery: CustomerMetricsQuery,
         userRepository: UserRepository,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
@@ -221,7 +212,6 @@ function periodOf(filter: DateRangeFilterDto): string {
             barberMetricsQuery,
             customerMetricsQuery,
             userRepository,
-            clock,
           ),
           cacheManager,
           cachePolicy,
@@ -237,7 +227,6 @@ function periodOf(filter: DateRangeFilterDto): string {
         BARBER_METRICS_QUERY,
         CUSTOMER_METRICS_QUERY,
         USER_REPOSITORY,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],

@@ -1,6 +1,6 @@
-import { DomainError } from './domain.error';
+import { UnauthorizedError } from '../../../../../shared/domain/errors/unauthorized.error';
 
-export class InvalidCredentialsError extends DomainError {
+export class InvalidCredentialsError extends UnauthorizedError {
   constructor() {
     super('Invalid email or password.');
   }

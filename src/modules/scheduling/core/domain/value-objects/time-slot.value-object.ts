@@ -7,7 +7,8 @@ export const APPOINTMENT_DURATION_MINUTES = 30;
 /**
  * A fixed 30-minute window that fits within business hours (08:00-18:00),
  * aligned to the 30-minute grid. Purely structural — whether the slot is
- * still in the future is a separate, Clock-driven concern for callers.
+ * still in the future is a separate concern for callers, resolved
+ * against whatever `Date` they treat as "now".
  */
 export class TimeSlot {
   private readonly start: Date;

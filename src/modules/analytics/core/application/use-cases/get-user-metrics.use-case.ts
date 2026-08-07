@@ -6,7 +6,6 @@ import {
 import { toDateRange } from '../mappers/date-range.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { UserMetricsQuery } from '../ports/user-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class GetUserMetricsUseCase implements UseCase<
@@ -16,7 +15,6 @@ export class GetUserMetricsUseCase implements UseCase<
   constructor(
     private readonly userMetricsQuery: UserMetricsQuery,
     private readonly userRepository: UserRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -24,7 +22,7 @@ export class GetUserMetricsUseCase implements UseCase<
   ): Promise<GetUserMetricsOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const range = toDateRange(input.filter, this.clock);
+    const range = toDateRange(input.filter, new Date());
 
     const [
       totalUsers,

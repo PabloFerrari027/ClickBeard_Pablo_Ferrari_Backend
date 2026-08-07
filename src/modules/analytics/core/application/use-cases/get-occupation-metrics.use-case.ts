@@ -6,7 +6,6 @@ import {
 import { toDateRange } from '../mappers/date-range.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { BarberMetricsQuery } from '../ports/barber-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class GetOccupationMetricsUseCase implements UseCase<
@@ -16,7 +15,6 @@ export class GetOccupationMetricsUseCase implements UseCase<
   constructor(
     private readonly barberMetricsQuery: BarberMetricsQuery,
     private readonly userRepository: UserRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -24,7 +22,7 @@ export class GetOccupationMetricsUseCase implements UseCase<
   ): Promise<GetOccupationMetricsOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const range = toDateRange(input.filter, this.clock);
+    const range = toDateRange(input.filter, new Date());
 
     const occupancyByBarber =
       await this.barberMetricsQuery.occupancyByBarber(range);

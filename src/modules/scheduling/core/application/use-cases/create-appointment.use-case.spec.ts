@@ -16,7 +16,6 @@ import {
   BarberSnapshot,
 } from '../ports/barber-directory.port';
 import { TransactionManager } from '../ports/transaction-manager.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { CreateAppointmentUseCase } from './create-appointment.use-case';
 
@@ -50,13 +49,14 @@ describe('CreateAppointmentUseCase', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let barberDirectory: jest.Mocked<BarberDirectory>;
   let transactionManager: jest.Mocked<TransactionManager>;
-  let clock: jest.Mocked<Clock>;
   let eventBus: jest.Mocked<EventBus>;
   let useCase: CreateAppointmentUseCase;
 
   const now = new Date(2026, 0, 1, 0, 0, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     appointmentRepository = {
       save: jest.fn(),
       findById: jest.fn(),
@@ -79,9 +79,6 @@ describe('CreateAppointmentUseCase', () => {
     transactionManager = {
       runInTransaction: jest.fn((work: () => Promise<unknown>) => work()),
     } as unknown as jest.Mocked<TransactionManager>;
-    clock = {
-      now: jest.fn().mockReturnValue(now),
-    };
     eventBus = {
       publish: jest.fn(),
     };
@@ -91,13 +88,16 @@ describe('CreateAppointmentUseCase', () => {
       userRepository,
       barberDirectory,
       transactionManager,
-      clock,
       eventBus,
     );
 
     userRepository.findById.mockResolvedValue(buildCustomer());
     barberDirectory.findById.mockResolvedValue(buildBarberSnapshot());
     availabilityService.isBarberAvailable.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   const validInput = {
@@ -165,7 +165,7 @@ describe('CreateAppointmentUseCase', () => {
   });
 
   it('throws AppointmentTooSoonError when the slot starts before now', async () => {
-    clock.now.mockReturnValue(new Date(2026, 0, 20, 0, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 20, 0, 0, 0, 0));
 
     await expect(useCase.execute(validInput)).rejects.toThrow(
       AppointmentTooSoonError,
@@ -173,7 +173,7 @@ describe('CreateAppointmentUseCase', () => {
   });
 
   it('throws AppointmentTooSoonError when less than 2 hours of notice remain', async () => {
-    clock.now.mockReturnValue(new Date(2026, 0, 10, 9, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0, 0));
 
     await expect(useCase.execute(validInput)).rejects.toThrow(
       AppointmentTooSoonError,
@@ -181,7 +181,7 @@ describe('CreateAppointmentUseCase', () => {
   });
 
   it('allows creation when exactly 2 hours of notice remain', async () => {
-    clock.now.mockReturnValue(new Date(2026, 0, 10, 8, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 10, 8, 0, 0, 0));
 
     await expect(useCase.execute(validInput)).resolves.toBeDefined();
   });

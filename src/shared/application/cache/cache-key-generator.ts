@@ -50,6 +50,27 @@ export class CacheKeyGenerator {
     return CacheKeyPrefix.of(`appointments:${customerId}:`);
   }
 
+  /**
+   * Not scoped by requester: `AppointmentsController`'s `@Auth(UserRole.ADMIN)`
+   * gates the route before any cached use case runs, and the result is
+   * identical for every admin — same reasoning as Analytics's metrics keys.
+   */
+  static todayAppointments(page: number): CacheKey {
+    return CacheKey.of(`appointments:today:${page}`);
+  }
+
+  static todayAppointmentsPrefix(): CacheKeyPrefix {
+    return CacheKeyPrefix.of('appointments:today:');
+  }
+
+  static futureAppointments(page: number): CacheKey {
+    return CacheKey.of(`appointments:future:${page}`);
+  }
+
+  static futureAppointmentsPrefix(): CacheKeyPrefix {
+    return CacheKeyPrefix.of('appointments:future:');
+  }
+
   static availableTimeSlots(
     barberId: string,
     date: Date,
@@ -86,7 +107,20 @@ export class CacheKeyGenerator {
       : preset;
   }
 
+  /**
+   * Must bucket by the same calendar day `TimeSlot.allForDate` uses
+   * (server-local `getFullYear`/`getMonth`/`getDate`), not UTC — on a
+   * negative-UTC-offset server, a UTC-based bucket here would put the
+   * booking use case's invalidation (keyed off the appointment's actual
+   * `startAt`) on a different day than the list use case's cache entry
+   * (keyed off the query's date), leaving a stale, already-booked slot
+   * visible after booking.
+   */
   private static dateOnly(date: Date): string {
-    return date.toISOString().slice(0, 10);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
   }
 }

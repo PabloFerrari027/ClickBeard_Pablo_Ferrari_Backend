@@ -11,6 +11,17 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DB_HOST: localhost
+  DB_PORT: 5432
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  DB_NAME: clickbeard_ci
+  DB_SSL: "false"
+  REDIS_HOST: localhost
+  REDIS_PORT: 6379
+  NODE_ENV: test
+
 jobs:
   test:
     name: Lint, build & unit tests
@@ -35,6 +46,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Guards against a real bug found in local dev: a stale
+      # tsconfig.tsbuildinfo can make `nest build` report success while
+      # silently skipping most of the emit, including dist/main.js.
+      - name: Verify build actually emitted the entrypoint
+        run: |
+          test -s dist/main.js || {
+            echo "::error::dist/main.js is missing or empty — the build did not emit correctly."
+            exit 1
+          }
+
       - name: Unit tests
         run: npm run test:cov -- --passWithNoTests
 
@@ -45,3 +66,64 @@ jobs:
           name: coverage
           path: coverage/
           retention-days: 7
+
+  migrations:
+    name: Migrations apply and reverse cleanly
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: clickbeard_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run every migration up
+        run: npm run migration:up
+
+      - name: Reverse every migration down
+        run: npm run migration:reset
+
+      - name: Re-apply (leaves the schema in the up state, matching a real deploy)
+        run: npm run migration:up
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

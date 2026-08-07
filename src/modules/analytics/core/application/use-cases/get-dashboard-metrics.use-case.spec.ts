@@ -9,7 +9,6 @@ import { AppointmentMetricsQuery } from '../ports/appointment-metrics-query.port
 import { BarberMetricsQuery } from '../ports/barber-metrics-query.port';
 import { CustomerMetricsQuery } from '../ports/customer-metrics-query.port';
 import { UserMetricsQuery } from '../ports/user-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { GetDashboardMetricsUseCase } from './get-dashboard-metrics.use-case';
 
 function buildUser(id: string, role: UserRole): User {
@@ -31,12 +30,13 @@ describe('GetDashboardMetricsUseCase', () => {
   let barberMetricsQuery: jest.Mocked<BarberMetricsQuery>;
   let customerMetricsQuery: jest.Mocked<CustomerMetricsQuery>;
   let userRepository: jest.Mocked<UserRepository>;
-  let clock: jest.Mocked<Clock>;
   let useCase: GetDashboardMetricsUseCase;
 
   const now = new Date(2026, 7, 6, 12, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     userMetricsQuery = {
       countTotal: jest.fn().mockResolvedValue(0),
       countByRole: jest.fn().mockResolvedValue([]),
@@ -82,15 +82,17 @@ describe('GetDashboardMetricsUseCase', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
     };
-    clock = { now: jest.fn().mockReturnValue(now) };
     useCase = new GetDashboardMetricsUseCase(
       userMetricsQuery,
       appointmentMetricsQuery,
       barberMetricsQuery,
       customerMetricsQuery,
       userRepository,
-      clock,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('composes every section of the dashboard for an admin requester', async () => {

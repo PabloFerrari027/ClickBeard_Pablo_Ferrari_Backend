@@ -1,6 +1,6 @@
-import { DomainError } from './domain.error';
+import { ForbiddenError } from '../../../../../shared/domain/errors/forbidden.error';
 
-export class UserIsNotAdminError extends DomainError {
+export class UserIsNotAdminError extends ForbiddenError {
   constructor() {
     super('Only an existing ADMIN can create or promote another ADMIN.');
   }

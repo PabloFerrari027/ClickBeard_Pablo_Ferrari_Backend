@@ -3,7 +3,6 @@ import {
   InvalidateExpiredVerificationCodesOutputDto,
 } from '../dtos/invalidate-expired-verification-codes.dto';
 import { VerificationCodeRepository } from '../ports/verification-code-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 /**
@@ -17,11 +16,10 @@ export class InvalidateExpiredVerificationCodesUseCase implements UseCase<
 > {
   constructor(
     private readonly verificationCodeRepository: VerificationCodeRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(): Promise<InvalidateExpiredVerificationCodesOutputDto> {
-    const now = this.clock.now();
+    const now = new Date();
     const expiredCodes =
       await this.verificationCodeRepository.findExpiredActive(now);
 

@@ -8,7 +8,6 @@ import {
 import { toTimeSlotDto } from '../mappers/time-slot.mapper';
 import { AvailabilityService } from '../ports/availability-service.port';
 import { BarberDirectory } from '../ports/barber-directory.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 export class ListAvailableTimeSlotsUseCase implements UseCase<
@@ -18,7 +17,6 @@ export class ListAvailableTimeSlotsUseCase implements UseCase<
   constructor(
     private readonly barberDirectory: BarberDirectory,
     private readonly availabilityService: AvailabilityService,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -38,7 +36,7 @@ export class ListAvailableTimeSlotsUseCase implements UseCase<
       input.barberId,
       input.date,
     );
-    const now = this.clock.now();
+    const now = new Date();
 
     const availableSlots = TimeSlot.allForDate(input.date).filter(
       (slot) =>

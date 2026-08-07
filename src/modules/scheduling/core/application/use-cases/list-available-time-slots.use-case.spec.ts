@@ -3,18 +3,18 @@ import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error'
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AvailabilityService } from '../ports/availability-service.port';
 import { BarberDirectory } from '../ports/barber-directory.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { ListAvailableTimeSlotsUseCase } from './list-available-time-slots.use-case';
 
 describe('ListAvailableTimeSlotsUseCase', () => {
   let barberDirectory: jest.Mocked<BarberDirectory>;
   let availabilityService: jest.Mocked<AvailabilityService>;
-  let clock: jest.Mocked<Clock>;
   let useCase: ListAvailableTimeSlotsUseCase;
 
   const date = new Date(2026, 0, 10, 0, 0, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 0, 1, 0, 0, 0, 0));
+
     barberDirectory = {
       findById: jest.fn(),
     };
@@ -22,13 +22,9 @@ describe('ListAvailableTimeSlotsUseCase', () => {
       isBarberAvailable: jest.fn(),
       getBookedSlots: jest.fn(),
     };
-    clock = {
-      now: jest.fn().mockReturnValue(new Date(2026, 0, 1, 0, 0, 0, 0)),
-    };
     useCase = new ListAvailableTimeSlotsUseCase(
       barberDirectory,
       availabilityService,
-      clock,
     );
 
     barberDirectory.findById.mockResolvedValue({
@@ -36,6 +32,10 @@ describe('ListAvailableTimeSlotsUseCase', () => {
       qualificationIds: ['qualification-id'],
       active: true,
     });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns all 20 daily slots when none are booked', async () => {
@@ -73,7 +73,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
 
   it('excludes slots that have already passed today', async () => {
     availabilityService.getBookedSlots.mockResolvedValue([]);
-    clock.now.mockReturnValue(new Date(2026, 0, 10, 12, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 10, 12, 0, 0, 0));
 
     const result = await useCase.execute({
       barberId: 'barber-id',

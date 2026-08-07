@@ -7,7 +7,6 @@ import {
 } from '../dtos/cancel-appointment.dto';
 import { toAppointmentDto } from '../mappers/appointment.mapper';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
@@ -17,7 +16,6 @@ export class CancelAppointmentUseCase implements UseCase<
 > {
   constructor(
     private readonly appointmentRepository: AppointmentRepository,
-    private readonly clock: Clock,
     private readonly eventBus: EventBus,
   ) {}
 
@@ -36,7 +34,7 @@ export class CancelAppointmentUseCase implements UseCase<
       throw new AppointmentAccessDeniedError();
     }
 
-    const now = this.clock.now();
+    const now = new Date();
 
     appointment.cancel(now);
 

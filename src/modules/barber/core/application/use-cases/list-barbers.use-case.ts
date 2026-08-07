@@ -5,11 +5,13 @@ import {
 } from '../dtos/list-barbers.dto';
 import { toBarberDto } from '../mappers/barber.mapper';
 import { BarberRepository } from '../ports/barber-repository.port';
+import {
+  computeTotalPages,
+  DEFAULT_LIMIT,
+  resolvePage,
+} from '../../../../../shared/application/pagination';
 import { UseCase } from '../../../../../shared/application/use-case';
 import { Barber } from '../../domain/entities/barber.entity';
-
-const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 100;
 
 export class ListBarbersUseCase implements UseCase<
   ListBarbersInputDto,
@@ -21,7 +23,7 @@ export class ListBarbersUseCase implements UseCase<
   ) {}
 
   async execute(input: ListBarbersInputDto): Promise<ListBarbersOutputDto> {
-    const page = input.page && input.page > 0 ? input.page : DEFAULT_PAGE;
+    const page = resolvePage(input.page);
 
     const { barbers, total } = await this.barberRepository.findAll(
       page,
@@ -40,7 +42,7 @@ export class ListBarbersUseCase implements UseCase<
     return {
       barbers: barberDtos,
       page,
-      totalPages: Math.ceil(total / DEFAULT_LIMIT),
+      totalPages: computeTotalPages(total),
     };
   }
 }

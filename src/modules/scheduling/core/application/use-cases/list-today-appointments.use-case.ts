@@ -6,11 +6,12 @@ import {
 import { toAppointmentDto } from '../mappers/appointment.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
+import {
+  computeTotalPages,
+  DEFAULT_LIMIT,
+  resolvePage,
+} from '../../../../../shared/application/pagination';
 import { UseCase } from '../../../../../shared/application/use-case';
-
-const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 100;
 
 export class ListTodayAppointmentsUseCase implements UseCase<
   ListTodayAppointmentsInputDto,
@@ -19,7 +20,6 @@ export class ListTodayAppointmentsUseCase implements UseCase<
   constructor(
     private readonly appointmentRepository: AppointmentRepository,
     private readonly userRepository: UserRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -27,10 +27,10 @@ export class ListTodayAppointmentsUseCase implements UseCase<
   ): Promise<ListTodayAppointmentsOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const page = input.page && input.page > 0 ? input.page : DEFAULT_PAGE;
+    const page = resolvePage(input.page);
 
     const { appointments, total } = await this.appointmentRepository.findByDate(
-      this.clock.now(),
+      new Date(),
       page,
       DEFAULT_LIMIT,
     );
@@ -38,7 +38,7 @@ export class ListTodayAppointmentsUseCase implements UseCase<
     return {
       appointments: appointments.map(toAppointmentDto),
       page,
-      totalPages: Math.ceil(total / DEFAULT_LIMIT),
+      totalPages: computeTotalPages(total),
     };
   }
 }
