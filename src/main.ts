@@ -1,30 +1,24 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { configureApp } from './configure-app';
 import { EnvConfig } from './shared/config/env.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const envConfig = app.get(EnvConfig);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  configureApp(app, envConfig);
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('ClickBeard API')
-    .setDescription('ClickBeard API documentation')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  // Without this, Nest never listens for SIGTERM/SIGINT, so a container
+  // orchestrator stopping this process skips every OnModuleDestroy hook
+  // (closing the Postgres/Redis/BullMQ connections cleanly) entirely.
+  app.enableShutdownHooks();
 
   await app.listen(envConfig.port);
 }
-bootstrap();
+
+bootstrap().catch((error: unknown) => {
+  new Logger('Bootstrap').error('Failed to start the application.', error);
+  process.exitCode = 1;
+});
