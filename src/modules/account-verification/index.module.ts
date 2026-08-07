@@ -12,7 +12,13 @@ import { VERIFICATION_CODE_GENERATOR } from './core/application/ports/verificati
 import { VERIFICATION_CODE_REPOSITORY } from './core/application/ports/verification-code-repository.port';
 import { VerificationCodeModel } from './infrastructure/persistence/models/verification-code.model';
 import { SequelizeVerificationCodeRepository } from './infrastructure/persistence/repositories/sequelize-verification-code.repository';
-import { CLOCK } from '../../shared/application/ports/clock.port';
+import { UserLoggedInConsumer } from './infrastructure/messaging/user-logged-in.consumer';
+import { ExpiredCodesSweepScheduler } from './infrastructure/scheduling/expired-codes-sweep.scheduler';
+import { AuthSessionManager } from './infrastructure/security/auth-session-manager';
+import { RandomVerificationCodeGenerator } from './infrastructure/security/random-verification-code-generator';
+import { AuthModule } from '../auth/index.module';
+import { IdentityModule } from '../identity/index.module';
+import { RedisConfigModule } from '../../shared/config/redis-config.module';
 import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
 import { AccountVerificationController } from './presentation/controllers/account-verification.controller';
 
@@ -20,11 +26,15 @@ import type { PasswordHasher } from '../identity/core/application/ports/password
 import type { SessionManager } from './core/application/ports/session-manager.port';
 import type { VerificationCodeGenerator } from './core/application/ports/verification-code-generator.port';
 import type { VerificationCodeRepository } from './core/application/ports/verification-code-repository.port';
-import type { Clock } from '../../shared/application/ports/clock.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
-  imports: [SequelizeModule.forFeature([VerificationCodeModel])],
+  imports: [
+    SequelizeModule.forFeature([VerificationCodeModel]),
+    IdentityModule,
+    AuthModule,
+    RedisConfigModule,
+  ],
   controllers: [AccountVerificationController],
   providers: [
     {
@@ -32,26 +42,28 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       useClass: SequelizeVerificationCodeRepository,
     },
     {
+      provide: VERIFICATION_CODE_GENERATOR,
+      useClass: RandomVerificationCodeGenerator,
+    },
+    { provide: SESSION_MANAGER, useClass: AuthSessionManager },
+    {
       provide: GenerateVerificationCodeUseCase,
       useFactory: (
         verificationCodeRepository: VerificationCodeRepository,
         verificationCodeGenerator: VerificationCodeGenerator,
         passwordHasher: PasswordHasher,
-        clock: Clock,
         eventBus: EventBus,
       ) =>
         new GenerateVerificationCodeUseCase(
           verificationCodeRepository,
           verificationCodeGenerator,
           passwordHasher,
-          clock,
           eventBus,
         ),
       inject: [
         VERIFICATION_CODE_REPOSITORY,
         VERIFICATION_CODE_GENERATOR,
         PASSWORD_HASHER,
-        CLOCK,
         EVENT_BUS,
       ],
     },
@@ -67,28 +79,22 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       useFactory: (
         verificationCodeRepository: VerificationCodeRepository,
         passwordHasher: PasswordHasher,
-        clock: Clock,
         eventBus: EventBus,
       ) =>
         new ValidateVerificationCodeUseCase(
           verificationCodeRepository,
           passwordHasher,
-          clock,
           eventBus,
         ),
-      inject: [VERIFICATION_CODE_REPOSITORY, PASSWORD_HASHER, CLOCK, EVENT_BUS],
+      inject: [VERIFICATION_CODE_REPOSITORY, PASSWORD_HASHER, EVENT_BUS],
     },
     {
       provide: InvalidateExpiredVerificationCodesUseCase,
-      useFactory: (
-        verificationCodeRepository: VerificationCodeRepository,
-        clock: Clock,
-      ) =>
+      useFactory: (verificationCodeRepository: VerificationCodeRepository) =>
         new InvalidateExpiredVerificationCodesUseCase(
           verificationCodeRepository,
-          clock,
         ),
-      inject: [VERIFICATION_CODE_REPOSITORY, CLOCK],
+      inject: [VERIFICATION_CODE_REPOSITORY],
     },
     {
       provide: CompleteAuthenticationUseCase,
@@ -102,6 +108,8 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         ),
       inject: [VERIFICATION_CODE_REPOSITORY, SESSION_MANAGER],
     },
+    UserLoggedInConsumer,
+    ExpiredCodesSweepScheduler,
   ],
 })
 export class AccountVerificationModule {}
