@@ -30,4 +30,11 @@ export class AppointmentResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   cancelledAt: Date | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Set only when an admin cancelled this appointment (directly or via a barber unavailability cascade); null for a customer self-cancellation.',
+  })
+  cancellationReason: string | null;
 }
