@@ -54,6 +54,7 @@ describe('ListFutureAppointmentsUseCase', () => {
       findByCustomerId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
+      findScheduledByBarberAndRange: jest.fn(),
     };
     userRepository = {
       save: jest.fn(),

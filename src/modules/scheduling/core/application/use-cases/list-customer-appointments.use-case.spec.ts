@@ -30,6 +30,7 @@ describe('ListCustomerAppointmentsUseCase', () => {
       findByCustomerId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
+      findScheduledByBarberAndRange: jest.fn(),
     };
     useCase = new ListCustomerAppointmentsUseCase(appointmentRepository);
   });

@@ -44,6 +44,7 @@ describe('CancelAppointmentUseCase', () => {
       findByCustomerId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
+      findScheduledByBarberAndRange: jest.fn(),
     };
     eventBus = {
       publish: jest.fn(),
