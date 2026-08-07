@@ -1,613 +1,1082 @@
-# ClickBeard
+# ClickBeard API
 
-REST API for managing barbershop appointments, built with [NestJS](https://nestjs.com/) and TypeScript.
+Backend de agendamento para barbearias, construído em **NestJS + TypeScript**, com **Arquitetura Hexagonal (Ports & Adapters)** e **Domain-Driven Design**. Este README é a documentação técnica de referência do projeto: reflete exatamente o que está implementado no código nesta branch, sem funcionalidades hipotéticas.
 
-## Architecture
+## Índice
 
-The project follows NestJS's standard modular structure, organized by domain. Inside each domain module, code is further layered following Clean Architecture: `core/domain` (entities, value objects, domain errors — no framework dependencies), `core/application` (use cases, DTOs, mappers, and port interfaces implemented by infrastructure), and `presentation` (NestJS controllers and HTTP request/response DTOs).
+1. [Visão Geral](#1-visão-geral)
+2. [Arquitetura](#2-arquitetura)
+3. [Estrutura do Projeto](#3-estrutura-do-projeto)
+4. [Tecnologias Utilizadas](#4-tecnologias-utilizadas)
+5. [Como Executar](#5-como-executar)
+6. [Funcionamento da Aplicação](#6-funcionamento-da-aplicação)
+7. [Comunicação Entre os Módulos](#7-comunicação-entre-os-módulos)
+8. [Banco de Dados](#8-banco-de-dados)
+9. [Cache](#9-cache)
+10. [Eventos](#10-eventos)
+11. [Regras de Negócio](#11-regras-de-negócio)
+12. [Cobertura de Testes](#12-cobertura-de-testes)
+13. [Tratamento de Falhas](#13-tratamento-de-falhas)
+14. [Segurança](#14-segurança)
+15. [Performance](#15-performance)
+16. [Observabilidade](#16-observabilidade)
+17. [Decisões Arquiteturais](#17-decisões-arquiteturais)
+18. [Possíveis Melhorias Futuras](#18-possíveis-melhorias-futuras)
+19. [Contribuição](#19-contribuição)
 
-```text
-src/
-├── main.ts                          # Application bootstrap, global ValidationPipe and Swagger configuration
-├── app.module.ts                    # Root, global module
-├── modules/
-│   ├── auth/                        # Authentication: login, refresh/rotate and revoke sessions
-│   │   ├── core/
-│   │   │   ├── domain/
-│   │   │   │   ├── entities/        # RefreshToken
-│   │   │   │   ├── events/          # UserLoggedIn
-│   │   │   │   └── errors/          # InvalidCredentialsError, InvalidRefreshTokenError, ...
-│   │   │   └── application/
-│   │   │       ├── dtos/            # Use case input/output DTOs
-│   │   │       ├── mappers/         # AuthUserSnapshot -> AuthenticatedUserDto
-│   │   │       ├── ports/           # UserDirectory, TokenProvider, RefreshTokenRepository
-│   │   │       │                    # (reuses Identity's PasswordHasher directly instead of redefining it)
-│   │   │       └── use-cases/       # Login, RefreshToken, Logout
-│   │   ├── infrastructure/
-│   │   │   └── persistence/         # RefreshTokenModel (Sequelize), mapper, SequelizeRefreshTokenRepository
-│   │   └── index.module.ts          # AuthModule wiring
-│   │
-│   ├── identity/                    # Users: registration, authentication, roles, activation
-│   │   ├── core/
-│   │   │   ├── domain/
-│   │   │   │   ├── entities/        # User
-│   │   │   │   ├── value-objects/   # Email, Password (hashed), PlainPassword
-│   │   │   │   ├── enums/           # UserRole (CLIENT, BARBER, ADMIN)
-│   │   │   │   ├── events/          # UserRegistered, PasswordChanged
-│   │   │   │   └── errors/          # Domain errors (InvalidEmailError, WeakPasswordError, ...)
-│   │   │   └── application/
-│   │   │       ├── dtos/            # Use case input/output DTOs
-│   │   │       ├── mappers/         # User -> UserDto
-│   │   │       ├── ports/           # UserRepository, PasswordHasher
-│   │   │       └── use-cases/       # RegisterUser, AuthenticateUser, GetUserProfile,
-│   │   │                            # ChangePassword, ChangeUserRole, ActivateUser, DeactivateUser
-│   │   ├── infrastructure/
-│   │   │   └── persistence/         # UserModel (Sequelize), mapper, SequelizeUserRepository
-│   │   ├── presentation/
-│   │   │   ├── controllers/         # UsersController (/users)
-│   │   │   └── dtos/                # *.request.dto.ts / *.response.dto.ts (class-validator + Swagger)
-│   │   └── index.module.ts          # IdentityModule wiring
-│   │
-│   ├── barber/                      # Barber profiles and their assigned qualifications
-│   │   ├── core/
-│   │   │   ├── domain/
-│   │   │   │   ├── entities/        # Barber
-│   │   │   │   ├── value-objects/   # Age
-│   │   │   │   └── errors/          # BarberNotFoundError, InvalidHiringDateError, ...
-│   │   │   └── application/
-│   │   │       ├── dtos/            # Use case input/output DTOs
-│   │   │       ├── mappers/         # Barber (+ Qualification[]) -> BarberDto
-│   │   │       ├── policies/        # ensureRequesterIsAdmin
-│   │   │       ├── ports/           # BarberRepository, UserDirectory (read-only view into Identity)
-│   │   │       └── use-cases/       # CreateBarber, UpdateBarber, GetBarber, ListBarbers,
-│   │   │                            # AddQualificationToBarber, RemoveQualificationFromBarber
-│   │   ├── infrastructure/
-│   │   │   └── persistence/         # BarberModel, BarberQualificationModel (the join table backing
-│   │   │                            # qualificationIds), mapper, SequelizeBarberRepository
-│   │   ├── presentation/
-│   │   │   ├── controllers/         # BarbersController (/barbers)
-│   │   │   └── dtos/
-│   │   └── index.module.ts          # BarberModule wiring
-│   │
-│   ├── qualification/               # Qualification catalog (e.g. "Beard Trim", "Fade Cut")
-│   │   ├── core/
-│   │   │   ├── domain/
-│   │   │   │   ├── entities/        # Qualification
-│   │   │   │   └── errors/          # QualificationNotFoundError, QualificationInUseError, ...
-│   │   │   └── application/
-│   │   │       ├── dtos/            # Use case input/output DTOs
-│   │   │       ├── mappers/         # Qualification -> QualificationDto
-│   │   │       ├── ports/           # QualificationRepository
-│   │   │       └── use-cases/       # CreateQualification, UpdateQualification,
-│   │   │                            # DeleteQualification, ListQualifications
-│   │   ├── infrastructure/
-│   │   │   └── persistence/         # QualificationModel, mapper, SequelizeQualificationRepository
-│   │   ├── presentation/
-│   │   │   ├── controllers/         # QualificationsController (/qualifications)
-│   │   │   └── dtos/
-│   │   └── index.module.ts          # QualificationModule wiring
-│   │
-│   ├── account-verification/        # Post-login email code: generate, resend, validate, expire, complete auth
-│   │   ├── core/
-│   │   │   ├── domain/
-│   │   │   │   ├── entities/        # VerificationCode
-│   │   │   │   ├── events/          # VerificationCodeGenerated, VerificationSucceeded, VerificationFailed
-│   │   │   │   └── errors/          # VerificationCodeExpiredError, InvalidVerificationCodeError, ...
-│   │   │   └── application/
-│   │   │       ├── dtos/            # Use case input/output DTOs
-│   │   │       ├── ports/           # VerificationCodeRepository, VerificationCodeGenerator, SessionManager
-│   │   │       │                    # (reuses Identity's PasswordHasher to hash/compare the code)
-│   │   │       └── use-cases/       # GenerateVerificationCode, ResendVerificationCode,
-│   │   │                            # ValidateVerificationCode, InvalidateExpiredVerificationCodes,
-│   │   │                            # CompleteAuthentication
-│   │   ├── infrastructure/
-│   │   │   └── persistence/         # VerificationCodeModel, mapper, SequelizeVerificationCodeRepository
-│   │   └── index.module.ts          # AccountVerificationModule wiring
-│   │
-│   ├── notification/                # Generic event -> notification pipeline, reused by every notification
-│   │   ├── core/
-│   │   │   └── application/
-│   │   │       ├── formatters/      # formatMessage — fills {{placeholder}} template variables
-│   │   │       ├── ports/           # LanguageResolver, MessageTemplateProvider, NotificationSender,
-│   │   │       │                    # NotificationDispatcher (alias of UseCase<DomainEvent, void>)
-│   │   │       └── use-cases/       # DispatchNotification
-│   │   └── index.module.ts          # NotificationModule wiring
-│   │
-│   ├── scheduling/                  # Appointment scheduling: booking, cancellation, availability
-│   │   ├── core/
-│   │   │   ├── domain/
-│   │   │   │   ├── entities/        # Appointment
-│   │   │   │   ├── value-objects/   # TimeSlot (30-minute slots within business hours)
-│   │   │   │   ├── enums/           # AppointmentStatus (SCHEDULED, CANCELLED)
-│   │   │   │   ├── events/          # AppointmentCreated, AppointmentCancelled
-│   │   │   │   └── errors/          # BarberTimeSlotConflictError, AppointmentTooSoonError, ...
-│   │   │   └── application/
-│   │   │       ├── dtos/            # Use case input/output DTOs
-│   │   │       ├── mappers/         # Appointment -> AppointmentDto, TimeSlot -> TimeSlotDto
-│   │   │       ├── policies/        # ensureRequesterIsAdmin
-│   │   │       ├── ports/           # AppointmentRepository, AvailabilityService, BarberDirectory,
-│   │   │       │                    # TransactionManager (reuses Identity's UserRepository directly)
-│   │   │       └── use-cases/       # CreateAppointment, CancelAppointment, GetAppointment,
-│   │   │                            # ListCustomerAppointments, ListTodayAppointments,
-│   │   │                            # ListFutureAppointments, ListAvailableTimeSlots
-│   │   ├── infrastructure/
-│   │   │   └── persistence/         # AppointmentModel, mapper, SequelizeAppointmentRepository,
-│   │   │                            # SequelizeTransactionManager, SequelizeAvailabilityService,
-│   │   │                            # SequelizeBarberDirectoryService (raw SQL over barbers/users/
-│   │   │                            # barbers_qualifications by table name — no cross-module model import)
-│   │   ├── presentation/
-│   │   │   ├── controllers/         # AppointmentsController (/appointments)
-│   │   │   └── dtos/
-│   │   └── index.module.ts          # SchedulingModule wiring
-│   │
-│   └── analytics/                   # Admin dashboard: read-only metrics across every other module
-│       ├── core/
-│       │   ├── domain/
-│       │   │   ├── enums/           # PeriodPreset (TODAY, WEEK, MONTH, YEAR, CUSTOM)
-│       │   │   ├── value-objects/   # DateRange
-│       │   │   └── errors/          # InvalidDateRangeError, CustomRangeRequiredError, ...
-│       │   └── application/
-│       │       ├── dtos/            # Read models (UserMetricsDto, AppointmentMetricsDto, ...) and
-│       │       │                    # use case input/output DTOs
-│       │       ├── mappers/         # DateRangeFilterDto -> DateRange
-│       │       ├── policies/        # ensureRequesterIsAdmin
-│       │       ├── ports/           # UserMetricsQuery, AppointmentMetricsQuery, BarberMetricsQuery,
-│       │       │                    # CustomerMetricsQuery, AnalyticsRepository (future event projections)
-│       │       └── use-cases/       # GetDashboardMetrics, GetUserMetrics, GetAppointmentMetrics,
-│       │                            # GetBarberMetrics, GetCustomerMetrics, GetOccupationMetrics
-│       ├── presentation/
-│       │   ├── controllers/         # AnalyticsController (/analytics) — every route @Auth(ADMIN)
-│       │   └── dtos/
-│       └── index.module.ts          # AnalyticsModule wiring
-│
-└── shared/
-    ├── application/
-    │   ├── use-case.ts              # Generic UseCase<Input, Output> contract implemented by every use case
-    │   ├── ports/                   # EventBus, MessageQueue, Clock, CacheManager, CachePolicy,
-    │   │                            # CacheInvalidationService — cross-module technical contracts
-    │   └── cache/                   # CacheKey(Prefix), CacheOptions, CacheResource, CacheKeyGenerator,
-    │                                # CachedUseCase / CacheInvalidatingUseCase decorators (see Caching below)
-    ├── domain/
-    │   └── events/                  # DomainEvent<Payload> — the shape every module's events implement
-    ├── config/                      # EnvConfig, PgConfig, SequelizeConfig (Postgres/Redis/queue settings)
-    ├── database/                    # PgModule (Sequelize connection + boot-time health check),
-    │                                 # TransactionContext (AsyncLocalStorage), persistence error
-    │                                 # hierarchy and Sequelize error mapping — see Persistence below
-    ├── presentation/
-    │   └── interceptors/            # FieldSelectionInterceptor (sparse fieldsets via ?fields=)
-    └── queue/                       # Queue integration via BullMQ/Redis
+---
+
+## 1. Visão Geral
+
+ClickBeard é uma API REST para gestão de uma barbearia: cadastro de clientes/barbeiros/administradores, catálogo de qualificações (serviços), perfis de barbeiro vinculados a qualificações, agendamento de horários com prevenção de conflitos, autenticação em duas etapas (senha + código de verificação por e-mail) e um painel de analytics administrativo com métricas de uso.
+
+**Principais funcionalidades:**
+
+- Cadastro e gestão de usuários com três papéis: `CLIENT`, `BARBER`, `ADMIN`.
+- Autenticação com **verificação em duas etapas**: login confirma a senha mas só emite tokens depois que o usuário valida um código de 6+ dígitos enviado por e-mail.
+- Sessões via **JWT de acesso + refresh token rotativo**, com revogação e lista de tokens no banco.
+- Cadastro de **qualificações** (serviços) e de **barbeiros**, com N:N entre eles.
+- **Agendamento de horários** com grade de 30 minutos, horário comercial fixo, aviso mínimo de 2h para reservar/cancelar, e prevenção de double-booking via índice único parcial no banco.
+- **Analytics administrativo**: métricas de usuários, agendamentos, barbeiros, clientes e ocupação, filtráveis por período.
+- **Cache Redis** de leitura em praticamente todo endpoint de consulta, com invalidação explícita por prefixo a cada escrita relevante.
+- **Eventos de domínio assíncronos** (BullMQ/Redis) para desacoplar efeitos colaterais (e-mails transacionais) do caminho da requisição HTTP.
+- Bootstrap do primeiro `ADMIN` via seeder idempotente (não existe rota pública para isso).
+
+**Principais características não-funcionais:**
+
+- Zero regra de negócio duplicada entre camadas: toda validação vive no Domain (entidades/value objects), nunca em controllers ou DTOs além da validação de shape/tipo.
+- Isolamento estrito entre bounded contexts: nenhum arquivo em `core/` de um módulo importa `infrastructure`/`presentation` de outro módulo.
+- Toda falha de regra de negócio (`DomainError`) é mapeada para o status HTTP correto por um filtro global — nunca cai em 500 genérico.
+- Suite de testes unitários co-localizados (`*.spec.ts` ao lado de cada arquivo) e suite de testes e2e cobrindo as 37 rotas HTTP expostas.
+
+---
+
+## 2. Arquitetura
+
+### 2.1 Estilo arquitetural
+
+O projeto segue **Arquitetura Hexagonal (Ports & Adapters)** combinada com **DDD tático** dentro de cada um dos 8 módulos de negócio, mais uma camada `shared/` com a infraestrutura técnica reaproveitada por todos.
+
+Cada módulo é dividido em três camadas:
+
+| Camada | Conteúdo | Depende de |
+|---|---|---|
+| **`core/domain`** | Entidades, Value Objects, erros de domínio, eventos de domínio, enums | Nada (nem framework, nem outras camadas) |
+| **`core/application`** | Use cases, Ports (interfaces), DTOs internos, mappers, policies | Apenas `core/domain` e interfaces (`ports`) que ele próprio declara |
+| **`infrastructure`** | Implementações concretas dos ports (Sequelize, BullMQ, bcrypt, JWT, SMTP...) | `core/application` (implementa seus ports) |
+| **`presentation`** | Controllers HTTP, DTOs de request/response, guards, decorators | `core/application` (chama use cases) |
+
+A regra de dependência do DDD/Clean Architecture é respeitada em toda a base: **as setas de dependência sempre apontam para dentro** (`presentation`/`infrastructure` → `application` → `domain`), nunca o contrário. Use cases dependem de **interfaces** (`Port`s) definidas por eles mesmos — quem implementa a interface é a `infrastructure`, injetada via o container de DI do Nest (Dependency Inversion Principle).
+
+### 2.2 Princípios aplicados
+
+- **SOLID**
+  - *Single Responsibility*: cada use case faz exatamente uma operação de negócio; entidades protegem seus próprios invariantes.
+  - *Open/Closed*: novos adapters (ex.: trocar Redis por outro cache) não exigem alterar use cases, só a implementação do Port e o binding no `index.module.ts`.
+  - *Liskov*: toda implementação de Port é substituível pela interface sem alterar o comportamento esperado pelo use case.
+  - *Interface Segregation*: Ports são pequenos e focados (ex.: `PasswordHasher` só tem `hash`/`compare`, não um `CryptoService` genérico).
+  - *Dependency Inversion*: `core/application` nunca importa uma classe concreta de `infrastructure` — só o token/interface do Port, resolvido via `@Inject` no `index.module.ts`.
+- **DDD tático**: Entidades (`Barber`, `Appointment`, `Qualification`, `User`, `VerificationCode`, `RefreshToken`) encapsulam estado e regras via métodos (`cancel()`, `addQualification()`, `consume()`...) — nunca setters públicos. Value Objects (`Email`, `Password`, `Age`, `TimeSlot`, `DateRange`) validam-se na construção e são imutáveis.
+- **Bounded Contexts**: cada um dos 8 módulos é um contexto isolado; comunicação entre eles acontece só por **eventos de domínio** (assíncrono) ou por **Ports explícitos que leem um snapshot read-only** (ex.: `BarberDirectory` em `scheduling`, que lê barbeiros sem depender do módulo `barber`).
+
+### 2.3 Diagrama de arquitetura geral
+
+```mermaid
+graph TB
+    subgraph Presentation["Presentation Layer"]
+        Controller["Controllers<br/>(HTTP, DTOs, Guards)"]
+    end
+
+    subgraph Application["Application Layer"]
+        UseCase["Use Cases"]
+        Port["Ports (interfaces)"]
+        Policy["Policies"]
+        Mapper["Mappers / DTOs"]
+    end
+
+    subgraph Domain["Domain Layer"]
+        Entity["Entities"]
+        VO["Value Objects"]
+        DomainErr["Domain Errors"]
+        DomainEvt["Domain Events"]
+    end
+
+    subgraph Infrastructure["Infrastructure Layer"]
+        SeqRepo["Sequelize Repositories"]
+        Security["bcrypt / JWT adapters"]
+        Queue["BullMQ adapters"]
+        Email["SMTP adapter"]
+    end
+
+    subgraph External["External Systems"]
+        PG[("PostgreSQL")]
+        Redis[("Redis")]
+        SMTP["SMTP server"]
+    end
+
+    Controller --> UseCase
+    UseCase --> Port
+    UseCase --> Entity
+    UseCase --> Policy
+    Entity --> VO
+    Entity --> DomainErr
+    UseCase --> DomainEvt
+
+    SeqRepo -.implements.-> Port
+    Security -.implements.-> Port
+    Queue -.implements.-> Port
+    Email -.implements.-> Port
+
+    SeqRepo --> PG
+    Queue --> Redis
+    Email --> SMTP
+
+    style Domain fill:#2d3748,color:#fff
+    style Application fill:#2c5282,color:#fff
+    style Infrastructure fill:#744210,color:#fff
+    style Presentation fill:#22543d,color:#fff
 ```
 
-- Each business domain (`auth`, `identity`, `barber`, `qualification`, `account-verification`, `notification`, `scheduling`, `analytics`) lives in its own module under `src/modules`, keeping the code isolated and easy to evolve independently. `barber` and `qualification` were deliberately split into separate modules — a barber profile and the qualification catalog are distinct bounded contexts that happen to reference each other (a barber holds qualification ids; deleting a qualification checks whether any barber still uses it), so each module's use cases reach into the other's ports via plain relative imports rather than merging the two domains. `auth` and `account-verification` follow the same pattern for the user identity they need: instead of depending on Identity's `User` entity, each defines its own decoupled `UserDirectory` port and snapshot type, while still literally reusing Identity's `PasswordHasher` port (a technology-agnostic hash/compare contract, not a domain concept) for both passwords and verification codes. `analytics` takes the same isolation principle further still: it owns no data of its own at all, so instead of reaching into another module's repository or entities it defines its own narrow, read-only ports (`UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`) scoped to exactly the aggregates a dashboard needs, never duplicating another module's business rules.
-- `src/shared` concentrates cross-cutting integrations and configuration reused across domain modules: validated environment variables (`class-validator`), PostgreSQL connection (Sequelize), asynchronous queues with Redis (BullMQ), the generic `UseCase` contract every use case implements, the cache-aside/invalidation primitives every cached use case is wrapped with (`CacheManager`, `CachePolicy`, `CacheInvalidationService`, `CacheKeyGenerator`, `CachedUseCase`/`CacheInvalidatingUseCase` — see [Caching](#caching) below), the `DomainEvent`/`EventBus`/`MessageQueue`/`Clock` primitives every module's event publishing builds on (see [Event-driven notifications](#event-driven-notifications) below), and the `FieldSelectionInterceptor` presentation interceptor (see [API conventions](#api-conventions) below).
-- Domain and application layers have no dependency on NestJS or any infrastructure package — controllers depend on use cases, use cases depend on port interfaces, and infrastructure adapters implement those ports. Persistence is the first infrastructure layer to land (see [Persistence](#persistence) below): `UserRepository`, `RefreshTokenRepository`, `BarberRepository`, `QualificationRepository`, `VerificationCodeRepository`, `AppointmentRepository`, `TransactionManager`, `AvailabilityService` and `BarberDirectory` are all bound to Sequelize/Postgres adapters. Queue, cache and email adapters don't exist yet, so every remaining port (`PasswordHasher`, `TokenProvider`, `EventBus`, `MessageQueue`, `Clock`, `VerificationCodeGenerator`, `SessionManager`, `LanguageResolver`, `MessageTemplateProvider`, `NotificationSender`, `UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`, `AnalyticsRepository`, `CacheManager`, `CachePolicy`, `CacheInvalidationService`) is still defined but not yet bound to a concrete implementation — so `AppModule` still only wires `DatabaseModule` in, not any domain module.
-- Supporting infrastructure (PostgreSQL, Redis and, optionally, the application itself) runs in Docker containers, orchestrated by `docker-compose.yml`.
-- Interactive API documentation is generated automatically by Swagger and is available at `/docs` while the application is running.
+### 2.4 Fluxo de uma requisição
 
-## API conventions
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Guard as AccessTokenGuard/RolesGuard
+    participant Controller
+    participant UseCase
+    participant Port as Repository Port
+    participant Adapter as Sequelize Adapter
+    participant DB as PostgreSQL
 
-- **Sparse fieldsets**: any endpoint on a controller decorated with `FieldSelectionInterceptor` accepts a `?fields=a,b,c` query parameter to return only the requested top-level response fields (e.g. `GET /barbers/:id?fields=id,name`). Every controller in this project uses it.
-- **Authorization**: every protected route is guarded via the composed `@Auth(...roles)` / `@SelfOrAdmin()` decorators (`auth` module, `presentation/decorators`). `AccessTokenGuard` validates the bearer access token and attaches the caller's id and **current** role to the request; `RolesGuard` enforces an optional role allow-list (no roles means any authenticated user); `SelfOrAdminGuard` allows a route for the resource's own owner or an `ADMIN`. Use cases still receive the acting user's id (`requesterId`/`userId`), but controllers now source it from the verified token via `@CurrentUser()` instead of trusting it from the request body. Every admin-only use case also re-checks the role itself via the `ensureRequesterIsAdmin` policy, so the rule holds even if a use case is ever invoked outside its guarded route — e.g. `GetAppointmentUseCase`'s ownership check runs inside the use case regardless of the controller's own `@Auth()` guard.
+    Client->>Controller: HTTP request
+    Controller->>Guard: valida JWT + role (se protegida)
+    Guard-->>Controller: request.user populado
+    Controller->>UseCase: execute(input)
+    UseCase->>Port: findById / save (interface)
+    Port->>Adapter: implementação concreta
+    Adapter->>DB: SQL via Sequelize
+    DB-->>Adapter: rows
+    Adapter-->>Port: Entidade de Domínio
+    Port-->>UseCase: Entidade de Domínio
+    UseCase-->>Controller: Output DTO
+    Controller-->>Client: 200/201 JSON
 
-## Persistence
-
-Every repository/service port that reads or writes data is backed by a Sequelize (Postgres) adapter living in that module's own `infrastructure/persistence`. Use cases never see Sequelize: they depend on the port interface, `index.module.ts` binds the port token to the adapter (`{ provide: USER_REPOSITORY, useClass: SequelizeUserRepository }`), and the adapter is the only place a Sequelize model or query is ever mentioned.
-
-```text
-Use Case ──depends on──► Repository Port (interface) ◄──implements── SequelizeXRepository ──queries──► Postgres
-                                                              │
-                                                              ▼
-                                                     XModel (sequelize-typescript)
-                                                              │
-                                                              ▼
-                                                     Mapper: Model <-> Domain Entity
+    Note over UseCase,Controller: Em caso de DomainError,<br/>DomainErrorFilter mapeia para o status HTTP correto
 ```
 
-- **Connection**: `PgConfig`/`SequelizeConfig` (`shared/config`) build the connection options from `EnvConfig` — host/port/credentials, a configurable pool (`DB_POOL_MAX/MIN/IDLE_MS/ACQUIRE_MS`), optional SSL (`DB_SSL`, for managed Postgres in production), and SQL logging only in `development`. `PgModule` (`shared/database/pg`) opens that connection via `SequelizeModule.forRootAsync`, and `PgConnectionChecker` fails fast at boot with a clear log line if Postgres is unreachable instead of surfacing a confusing error on the first query. `DatabaseModule` (`@Global()`) wraps `PgModule` and is the one thing `AppModule` imports — every domain module's own `SequelizeModule.forFeature([...])` resolves against that single connection without importing `DatabaseModule` itself.
-- **Migrations own the schema** — the app connects with `synchronize: false` and never creates or alters a table at runtime. `database/migrations` (plain JS, run by `sequelize-cli` via `.sequelizerc` / `database/config/config.js`, deliberately outside `src` so they're independent of the app's TS build) hand-write every table, constraint, foreign key and index — including a **partial unique index** on `appointments (barber_id, start_at) WHERE status = 'SCHEDULED'`, which is the actual guarantee against double-booking a barber, not just `CreateAppointmentUseCase`'s own pre-check. See [Migrations](#migrations) below for the scripts.
-- **Models** (`sequelize-typescript`, one per module) map 1:1 to a table and know nothing about domain rules — they're plain attribute bags. `Barber`'s and `Qualification`'s many-to-many (`barbers_qualifications`) lives in the Barber module (it's `Barber.qualificationIds` that's the domain concept), with a composite primary key doubling as the "no duplicate assignment" constraint.
-- **Mappers** (`toXDomain` / `toXPersistence`, one file per aggregate) are the only code that converts between a model's plain attributes and a domain entity's private constructor + value objects (`Email.create`, `Password.fromHash`, `Age.create`, `TimeSlot.create`, ...) — no controller, use case or model ever crosses that boundary itself.
-- **Cross-module reads stay decoupled at the infrastructure layer too**, mirroring the application-layer isolation described above: `SequelizeQualificationRepository.listByBarberId` and Scheduling's `SequelizeBarberDirectoryService` (which resolves a barber's active flag from Identity's `users` table and its qualifications from Barber's join table) query those other modules' tables by literal table name via a raw parameterized query, instead of importing their Sequelize model classes. Only within a module's own persistence code are models used directly.
-- **Transactions**: `TransactionContext` (`shared/database`, backed by `AsyncLocalStorage`) makes the transaction started by `SequelizeTransactionManager.runInTransaction` ambiently available to every repository call further down the same async call stack — `TransactionManager`'s port signature takes a plain `() => Promise<T>` callback with no transaction parameter, so this is what lets `CreateAppointmentUseCase`'s availability check and save happen atomically without threading a `Transaction` object through an application-layer port. `TransactionContext.runAtomic` is the same mechanism for an adapter whose own single port method (`BarberRepository.save`, upserting the barber row and syncing its qualification links) must be atomic even when nothing above it opened a transaction — it joins one if it's already running, or opens its own otherwise.
-- **Error mapping**: every adapter method translates Sequelize's error into either the module's own domain error (a unique violation on `users.email` → `UserAlreadyExistsError`, on the appointments partial index → `BarberTimeSlotConflictError`, a foreign key violation while deleting a qualification still in use → `QualificationInUseError`, ...) or, for connection/timeout/deadlock/anything unexpected, one of the four `PersistenceError` subclasses in `shared/database/errors` — so no SQL text or driver error shape ever reaches the application layer. `isUniqueConstraintError`/`isForeignKeyConstraintError`/`isConnectionError`/`isTimeoutError`/`isDeadlockError` (`shared/database/sequelize-error.helpers.ts`) are the shared type guards every adapter's `catch` block is built from.
-- Every repository, model and mapper listed above was exercised against a real Postgres instance (`docker compose up postgres`, migrations applied) while building it, including the double-booking conflict, the rebooking-after-cancellation path, and the barber/qualification join sync — not just type-checked.
+### 2.5 Dependências entre módulos
 
-## Event-driven notifications
+```mermaid
+graph LR
+    Identity["identity"]
+    Auth["auth"]
+    AccountVerification["account-verification"]
+    Barber["barber"]
+    Qualification["qualification"]
+    Scheduling["scheduling"]
+    Analytics["analytics"]
+    Notification["notification"]
 
-Business modules never send emails (or any other notification) directly — they only publish a domain event, and a generic, reusable pipeline turns that event into a sent notification. Nothing about this is specific to any one notification, which is what lets new ones be added without touching business logic.
+    Identity <-.forwardRef.-> Auth
+    AccountVerification --> Auth
+    AccountVerification --> Identity
+    Barber --> Identity
+    Barber --> Auth
+    Barber <-.forwardRef.-> Qualification
+    Qualification --> Identity
+    Qualification --> Auth
+    Scheduling --> Identity
+    Scheduling --> Auth
+    Analytics --> Identity
+    Analytics --> Auth
 
-```text
-Identity.RegisterUser ────publish───► UserRegistered ──┐
-Identity.ChangePassword ─publish───► PasswordChanged ──┤
-Authentication.Login ────publish───► UserLoggedIn        (async, via a queue — not implemented yet)
-                                                         │
-AccountVerification.GenerateVerificationCode            │
-  (a future queue consumer runs this on UserLoggedIn)   │
-  ────────────publish───► VerificationCodeGenerated ────┤
-                                                         ▼
-                                     Notification.DispatchNotificationUseCase
-                             (LanguageResolver → MessageTemplateProvider → format → NotificationSender)
+    style Notification fill:#4a5568,color:#fff
 ```
 
-- Every event implements the shared `DomainEvent<Payload>` shape (`name`, `occurredAt`, an optional `recipientEmail`, and a flat string `payload`) from `shared/domain/events`, and is published through the single `EventBus` port from `shared/application/ports`.
-- `DispatchNotificationUseCase` (Notification module) is the one pipeline behind every notification: it resolves the recipient's preferred language (`LanguageResolver`, keyed by email — the one field every notifiable event carries), looks up the template for `event.name` + that language (`MessageTemplateProvider`), fills in `{{placeholder}}` variables from `event.payload`, and sends it (`NotificationSender`). It silently does nothing for events with no `recipientEmail` or no matching template, so unrelated events (like `VerificationSucceeded`/`VerificationFailed`) can flow through the same bus without triggering anything.
-- The verification-code email is triggered by `VerificationCodeGenerated`, not `UserLoggedIn` — the code doesn't exist yet at the moment login succeeds, so the email can only be built once Account Verification has actually generated one.
-- `MessageQueue` (`shared/application/ports`) models the async transport a real `EventBus` adapter would use internally to move a published event off the request path; no Core code calls it directly yet, since the queue infrastructure itself hasn't been implemented.
+Todo módulo com rotas HTTP protegidas importa `IdentityModule` + `AuthModule` — não porque seus *use cases* precisem, mas porque o guard `@Auth()` (`AccessTokenGuard`) resolve `TOKEN_PROVIDER` (de `auth`) e `USER_REPOSITORY` (de `identity`) **no escopo do próprio módulo do controller** (é assim que o DI do Nest resolve `UseGuards`). `Barber` e `Qualification` têm uma dependência circular genuína (um barbeiro tem qualificações; excluir uma qualificação precisa checar se algum barbeiro a usa) resolvida com `forwardRef()` nos dois sentidos. `notification` não depende de nenhum outro módulo — é puramente dirigido por eventos.
 
-## Caching
+---
 
-Every cacheable read is wrapped by a generic Decorator instead of calling a cache from inside the use case — the application layer never imports anything cache-related, so a use case's own logic is identical whether it ends up cached or not.
+## 3. Estrutura do Projeto
 
-```text
-GetBarberUseCase ────wrapped by────► CachedUseCase<Input, Output>            (Cache-Aside)
-                                          1. CacheManager.get(key)
-                                          2. hit  → return the cached value, the wrapped use case never runs
-                                          3. miss → run the wrapped use case
-                                          4. CacheManager.set(key, result, { ttlSeconds })
-                                          5. return the result
-
-UpdateBarberUseCase ─wrapped by────► CacheInvalidatingUseCase<Input, Output>
-                                          1. run the wrapped use case (persists the change)
-                                          2. CacheInvalidationService.invalidateKeys/invalidatePrefixes(...)
-                                          3. return the result   — synchronously, before the caller gets a response
+```
+ClickBeard_Pablo_Ferrari/
+├── src/
+│   ├── main.ts                    # Bootstrap real (NestFactory + shutdown hooks)
+│   ├── configure-app.ts           # Setup compartilhado entre main.ts e os testes e2e
+│   ├── app.module.ts              # Módulo raiz — importa os 8 módulos + infra global
+│   ├── modules/                   # Os 8 bounded contexts
+│   │   ├── identity/              # Usuários, papéis, senha
+│   │   ├── auth/                  # Login, JWT, refresh tokens
+│   │   ├── account-verification/  # Código de verificação (2FA por e-mail)
+│   │   ├── barber/                # Perfis de barbeiro
+│   │   ├── qualification/         # Catálogo de serviços/qualificações
+│   │   ├── scheduling/            # Agendamentos e disponibilidade
+│   │   ├── notification/          # Disparo de e-mails (só consome eventos)
+│   │   └── analytics/             # Métricas administrativas
+│   └── shared/                    # Infra técnica reaproveitada por todos os módulos
+│       ├── application/           # Contratos cross-module (ports, cache, pagination)
+│       ├── cache/                 # Implementação Redis do cache
+│       ├── config/                # EnvConfig e configs derivadas (pg, redis, queue)
+│       ├── database/              # Módulo Sequelize + tradução de erros de persistência
+│       ├── domain/                # Base DomainError + DomainEvent
+│       ├── health/                # Health check (Postgres + Redis)
+│       ├── presentation/          # DomainErrorFilter, FieldSelectionInterceptor
+│       ├── queue/                 # EventBus/MessageQueue sobre BullMQ
+│       └── utils/                 # Constantes compartilhadas (ex.: MS_PER_DAY)
+├── database/
+│   ├── config/config.js           # Config lida só pelo sequelize-cli
+│   ├── migrations/                # 7 migrations, uma tabela por arquivo
+│   └── seeders/                   # Seeder do admin inicial
+├── test/
+│   ├── support/                   # Helpers de e2e (bootstrap de app, spy de e-mail, auth)
+│   └── *.e2e-spec.ts              # Um arquivo por controller
+├── .github/workflows/ci.yml       # 4 jobs: test, migrations, e2e, docker
+├── docker-compose.yml             # app + postgres + redis
+├── Dockerfile                     # 4 estágios: base, development, build, production
+└── .env.example
 ```
 
-- `CacheManager` (`shared/application/ports`) is the only port that actually talks to a cache technology — `get`/`set`/`delete`/`deleteByPrefix`. It's defined but not implemented yet, same as every other port in this project; swapping Redis for anything else will never touch the application layer.
-- `CachePolicy` resolves how long each `CacheResource` (`USER_PROFILE`, `BARBER`, `BARBERS_LIST`, `QUALIFICATIONS`, `APPOINTMENT`, `CUSTOMER_APPOINTMENTS`, `AVAILABLE_TIME_SLOTS`, and one per Analytics metric) stays cached, so tuning a TTL never requires touching a use case.
-- `CacheKeyGenerator` (`shared/application/cache`) is the single place every cache key format is defined (`user:{id}`, `barber:{id}`, `barbers:list:{page}`, `appointments:{customerId}:{page}`, `time-slots:{barberId}:{date}:{qualificationId}`, `dashboard:{period}`, `metrics:{type}:{period}`, ...) — no module's wiring ever builds a key string by hand.
-- Invalidation is always **synchronous**, never event-driven: a write use case's `index.module.ts` wiring wraps it in `CacheInvalidatingUseCase`, which clears the affected keys/prefixes right after persistence and before the caller gets a response, so the very next read is guaranteed fresh. Domain events keep existing for their own purpose (see [Event-driven notifications](#event-driven-notifications) above) — cache consistency never depends on one being consumed.
-- `GetAppointmentUseCase`'s cache key is the one exception that includes the requester's id (`appointment:{id}:{requesterId}`, not just `appointment:{id}`): it performs its own ownership/admin check internally (its route is only guarded by `@Auth()` with no role restriction, so any authenticated caller reaches the use case), so a cache hit must never let one caller ride on another caller's already-authorized result. Every other cached read either has no such check or is already gated by a controller guard before the cache is ever reached (e.g. Analytics' `@Auth(ADMIN)`), so its key is shared across every valid caller.
-- Currently cached: Identity's `GetUserProfile`; Barber's `GetBarber` and `ListBarbers`; Qualification's `ListQualifications`; Scheduling's `GetAppointment`, `ListCustomerAppointments` and `ListAvailableTimeSlots`; and all six Analytics dashboard/metrics use cases. The writes that make those stale (`CreateBarber`, `UpdateBarber`, `AddQualificationToBarber`, `RemoveQualificationFromBarber`, `CreateQualification`, `UpdateQualification`, `DeleteQualification`, `CreateAppointment`, `CancelAppointment`, `ChangePassword`, `ChangeUserRole`, `DeactivateUser`, `ActivateUser`) invalidate exactly the keys/prefixes they affect.
+### Convenção por camada dentro de um módulo
 
-## Business rules
+| Pasta | Responsabilidade | Quando usar | Exemplo real |
+|---|---|---|---|
+| `core/domain/entities/` | Estado + invariantes de negócio, sem framework | Ao modelar um conceito com identidade e ciclo de vida | `Appointment` (`cancel()` recusa cancelamento fora da janela de 2h) |
+| `core/domain/value-objects/` | Valores imutáveis e auto-validados | Quando um valor primitivo tem regras (formato, faixa) | `Email`, `Age`, `TimeSlot` |
+| `core/domain/errors/` | Uma classe por falha de regra de negócio | Toda vez que uma invariante é violada | `BarberTimeSlotConflictError extends ConflictError` |
+| `core/domain/events/` | Fatos que já aconteceram, publicados para fora do módulo | Quando outro módulo (ou e-mail) precisa reagir | `AppointmentCreatedEvent` |
+| `core/application/use-cases/` | Uma classe por operação, orquestra Ports + Entidades | Um caso de uso por rota/ação de negócio | `CreateAppointmentUseCase` |
+| `core/application/ports/` | Interfaces que a Application declara e a Infrastructure implementa | Toda vez que Application precisa de I/O (DB, cache, fila, e-mail) | `AppointmentRepository` |
+| `core/application/policies/` | Regras de autorização reaproveitadas por vários use cases do módulo | Quando mais de um use case checa a mesma condição | `ensureRequesterIsAdmin` |
+| `core/application/mappers/` | Entidade → DTO de saída do use case | Toda vez que um use case retorna dado para fora do Core | `toAppointmentDto` |
+| `infrastructure/persistence/` | Models Sequelize, repositórios concretos, mappers de persistência | Implementação de um Port de repositório | `SequelizeAppointmentRepository` |
+| `infrastructure/security/` | Adapters de hashing/token | Implementação de Ports de segurança | `BcryptPasswordHasher`, `JwtTokenProvider` |
+| `infrastructure/messaging/` | Consumers de fila (`OnModuleInit` + `MessageQueue.consume`) | Módulo reage a eventos publicados por outro | `UserLoggedInConsumer` |
+| `presentation/controllers/` | Endpoints HTTP, thin — só chama um use case e mapeia DTO | Um controller por agregado raiz exposto via HTTP | `AppointmentsController` |
+| `presentation/dtos/` | Request/response DTOs com `class-validator` | Toda entrada/saída HTTP | `CreateAppointmentRequestDto` |
 
-### Identity (users)
+`notification` foge do padrão de propósito: não tem `core/domain` (não protege nenhum agregado próprio, só formata e envia mensagens derivadas de eventos de outros módulos) nem `presentation` (não tem nenhuma rota HTTP — é acionado exclusivamente por um consumer de fila).
 
-- Every user has a role: `CLIENT` (default on registration), `BARBER`, or `ADMIN`.
-- A user's name must be at least 2 characters long once trimmed.
-- Email addresses are normalized (trimmed and lower-cased) and validated against a standard email format; they must be unique across users.
-- Passwords must be at least 8 characters long and contain at least one letter and one number before being hashed; only the hash is ever persisted or compared.
-- Changing a password requires the current password to be correct, and the new password must be different from the current one.
-- Changing a user's role to the role it already has is rejected as a no-op.
-- An `ADMIN` account can never be deactivated. A non-admin user cannot be deactivated twice, nor activated if already active.
-- Authentication fails with the same "invalid credentials" error whether the email doesn't exist or the password is wrong, to avoid leaking which emails are registered.
+---
 
-### Authentication (login sessions)
+## 4. Tecnologias Utilizadas
 
-- Login authenticates by email + password only — never by name, since email is already a unique identifier. Credentials are checked the same way as Identity's own rule: the same "invalid credentials" error whether the account doesn't exist, is inactive, or the password is wrong.
-- A successful login does **not** create a session by itself: `LoginUseCase` only confirms the credentials and publishes `UserLoggedIn`. The session (access + refresh token) is only created afterwards, by Account Verification's `CompleteAuthenticationUseCase`, once the emailed code has been validated.
-- Refreshing a session always rotates the refresh token: the token used is revoked and linked (`replacedByTokenId`) to the new one issued in its place, so a reused/replayed refresh token can be told apart from the current one.
-- Logging out revokes the given refresh token; logging out a token that was already revoked is a no-op, not an error.
+### Runtime e framework
 
-### Account Verification (post-login code)
+| Tecnologia | Versão | Finalidade | Por que foi escolhida |
+|---|---|---|---|
+| **NestJS** | ^11.0.1 | Framework HTTP + DI container | DI nativo é o que torna Ports & Adapters prático em TypeScript sem boilerplate manual; módulos do Nest mapeiam 1:1 para bounded contexts |
+| **TypeScript** | ^5.7.3 | Linguagem | Tipagem estática necessária para os Value Objects/DTOs serem uma barreira real de validação, não só documentação |
+| **Node.js 20** (`node:20-slim` na imagem Docker) | — | Runtime | LTS ativo, base `slim` (Debian/glibc) evita ter que compilar `bcrypt` (módulo nativo) do zero como aconteceria em Alpine |
 
-- Only one verification code can be active per user at a time. Generating a new one — whether because the user just logged in or asked to resend it — invalidates whatever code was active before.
-- A code expires 10 minutes after it's generated and only ever exists as a hash at rest (hashed the same way as passwords, via Identity's `PasswordHasher`); the raw code only ever appears in the `VerificationCodeGenerated` event payload, for the email.
-- A code allows at most 5 validation attempts; exceeding that locks it out even if the correct code is later supplied.
-- A code cannot be validated again once it was already consumed (successfully validated) or invalidated (superseded or expired).
-- The session can only be created after the code was successfully validated: `CompleteAuthenticationUseCase` re-checks the user's latest code is actually consumed itself, rather than trusting that validation happened first.
+### Persistência
 
-### Barber
+| Tecnologia | Versão | Finalidade | Por que foi escolhida |
+|---|---|---|---|
+| **PostgreSQL** | 17 (imagem Docker) | Banco relacional principal | Suporta índices parciais (`WHERE status = 'SCHEDULED'`), essencial para a regra de não-double-booking sem lock explícito |
+| **Sequelize** + **sequelize-typescript** | ^6.37.8 / ^2.1.6 | ORM | Usado só na camada `infrastructure/persistence` — Core nunca importa Sequelize, then trocar de ORM não vaza para regra de negócio |
+| **sequelize-cli** | ^6.6.5 | Migrations/seeders | Migrations vivem fora do `src/` (`database/`), versionadas independentemente do código da aplicação |
+| **pg** / **pg-hstore** | ^8.22.0 / ^2.3.4 | Driver Postgres | Dependência do Sequelize + usado por um pool `pg` cru no health check |
 
-- A barber profile's id is the same as the underlying Identity user's id (one-to-one).
-- A barber profile can only be created for a user that exists in Identity and currently has the `BARBER` role; a user can only have one barber profile.
-- A barber must always have at least one qualification: creation requires a non-empty list of qualification ids (duplicates are silently de-duplicated), and the last remaining qualification cannot be removed.
-- A qualification already assigned to a barber cannot be assigned again, and a qualification not assigned to a barber cannot be removed.
-- A barber's hiring date can never be set in the future (on creation or update).
-- A barber's age must be between 18 and 100.
-- Creating a barber and adding/removing a qualification from a barber all require the requester to be an `ADMIN`.
+### Cache e mensageria
 
-### Qualification
+| Tecnologia | Versão | Finalidade | Por que foi escolhida |
+|---|---|---|---|
+| **Redis** | 8-alpine (imagem Docker) | Cache de leitura + backend do BullMQ | Um único serviço cobre as duas necessidades (cache e fila), reduzindo peças móveis |
+| **ioredis** | ^6.0.0 | Cliente Redis | Cliente mais maduro para cenários com BullMQ (que o exige internamente) |
+| **BullMQ** + **@nestjs/bullmq** | ^5.81.3 / ^11.0.4 | Fila de jobs / event bus assíncrono | Fornece filas nomeadas com workers dedicados, base do fan-out de eventos de domínio descrito na seção 10 |
 
-- A qualification name must be at least 2 characters long once trimmed and must be unique across the catalog; description is optional and blank/whitespace-only values are stored as absent.
-- A qualification cannot be deleted while at least one barber still has it assigned.
-- Creating, updating, and deleting qualifications all require the requester to be an `ADMIN`.
+### Autenticação e segurança
 
-### Scheduling (appointments)
+| Tecnologia | Versão | Finalidade | Por que foi escolhida |
+|---|---|---|---|
+| **@nestjs/jwt** | ^11.0.2 | Emissão/verificação de JWT | Access e refresh token usam segredos e TTLs completamente independentes |
+| **bcrypt** | ^6.0.0 | Hash de senha e de código de verificação | Padrão de mercado para hash de senha; também usado para o código de verificação (nunca fica em texto puro no banco) |
+| **helmet** | ^8.3.0 | Headers HTTP de segurança | Aplicado globalmente em `configure-app.ts` |
+| **@nestjs/throttler** | ^6.5.0 | Rate limiting global | Guard global via `APP_GUARD`, configurável por env var |
+| **class-validator** / **class-transformer** | ^0.15.1 / ^0.5.1 | Validação/transform de DTOs de entrada | `ValidationPipe` global com `whitelist`+`forbidNonWhitelisted`+`transform` — todo campo não declarado no DTO é rejeitado |
 
-- An appointment can only be booked for a barber who is active and holds the requested qualification.
-- Appointments are booked in fixed 30-minute slots aligned to business hours (08:00–18:00); a slot outside that grid is rejected.
-- Appointments must be booked at least 2 hours in advance; the same 2-hour window applies to cancellation — an appointment can no longer be cancelled once it's inside that window.
-- A barber cannot be double-booked: creating an appointment fails if that barber's time slot is already occupied by another non-cancelled appointment.
-- Only the appointment's own customer, or an `ADMIN`, may view or cancel it.
-- Cancelling an already-cancelled appointment is rejected (`AppointmentAlreadyCancelledError`), not treated as a no-op.
+### Comunicação e documentação
 
-### Analytics (admin dashboard)
+| Tecnologia | Versão | Finalidade | Por que foi escolhida |
+|---|---|---|---|
+| **nodemailer** | ^9.0.4 | Envio de e-mail via SMTP | Único adapter concreto do port `NotificationSender` |
+| **@nestjs/swagger** + **swagger-ui-express** | ^11.4.6 / ^5.0.1 | Documentação OpenAPI interativa | Gerada a partir dos próprios DTOs decorados, servida em `/docs` |
+| **@nestjs/terminus** | ^11.1.1 | Health checks | Indicador nativo do Sequelize + um indicador Redis customizado |
 
-- Every endpoint is restricted to `ADMIN`.
-- Analytics owns no data: every read composes narrow, Analytics-defined ports (`UserMetricsQuery`, `AppointmentMetricsQuery`, `BarberMetricsQuery`, `CustomerMetricsQuery`) instead of reusing another module's repository or duplicating its business rules.
-- Every query accepts a date-range filter — `TODAY`, `WEEK`, `MONTH`, `YEAR`, or `CUSTOM` (which requires both `startAt` and `endAt`) — resolved by the `DateRange` value object.
-- `AnalyticsRepository` is a projection-store port reserved for a future event-driven adapter that maintains metrics incrementally; nothing consumes it yet, so dashboard/metric reads currently query the source ports directly (through the cache — see [Caching](#caching) above).
+### Qualidade e testes
 
-### Notifications
+| Tecnologia | Versão | Finalidade |
+|---|---|---|
+| **Jest** | ^30.0.0 | Test runner (unitário e e2e) |
+| **ts-jest** | ^29.2.5 | Transform TypeScript para Jest |
+| **supertest** | ^7.0.0 | Requisições HTTP contra a aplicação real nos testes e2e |
+| **ESLint 9 (flat config)** + **typescript-eslint** | ^9.18.0 / ^8.20.0 | Lint estático |
+| **Prettier** + **eslint-plugin-prettier** | ^3.4.2 / ^5.2.2 | Formatação, aplicada como regra de lint |
+| **ts-node** / **tsconfig-paths** | ^10.9.2 / ^4.2.0 | Execução TS ad-hoc (scripts de debug) |
 
-See [Event-driven notifications](#event-driven-notifications) for how this works mechanically; the notifications currently expected are:
+### Infraestrutura
 
-- A welcome email on `UserRegistered`.
-- A verification-code email on `VerificationCodeGenerated`.
-- A password-changed email on `PasswordChanged`.
+| Tecnologia | Finalidade |
+|---|---|
+| **Docker** (multi-stage) + **docker-compose** | Ambiente de desenvolvimento (`app`+`postgres`+`redis`) e imagem de produção |
+| **GitHub Actions** | CI com 4 jobs: lint/build/unit, migrations, e2e, build da imagem Docker |
 
-## Technologies
+---
 
-- **[NestJS](https://nestjs.com/)** + **TypeScript** — the application's main framework and language.
-- **[Sequelize](https://sequelize.org/)** (`sequelize-typescript`) + **PostgreSQL** — ORM and relational database.
-- **[BullMQ](https://docs.bullmq.io/)** + **Redis** — asynchronous processing queues and cache.
-- **[Swagger](https://docs.nestjs.com/openapi/introduction)** (`@nestjs/swagger`) — interactive API documentation.
-- **class-validator** / **class-transformer** — data validation and transformation (e.g., environment variables, DTOs).
-- **Jest** + **Supertest** — unit and end-to-end testing.
-- **ESLint** + **Prettier** — code standardization and quality.
-- **Commitizen** (`cz-conventional-changelog`) — commit message standardization.
-- **Docker** / **Docker Compose** — containerization of the application and infrastructure (PostgreSQL and Redis).
+## 5. Como Executar
 
-## Scripts
+### 5.1 Pré-requisitos
 
-The project provides a series of scripts to make it easier to manage infrastructure and the development environment.
+- Node.js 20+
+- Docker + Docker Compose (recomendado) **ou** PostgreSQL 17 e Redis 8 instalados localmente
 
-### Initial Setup
-
-#### `npm run setup`
-
-Performs the entire initial environment setup.
-
-#### What this command does
-
-1. Installs all project dependencies.
-2. Creates the `.env` file from `.env.example` (if it doesn't already exist).
-3. Starts the PostgreSQL and Redis containers.
-4. Waits for PostgreSQL to become available.
-5. Runs all migrations.
-6. Runs all seeders.
-7. Finishes by reporting that the environment is ready for development.
-
-Once it's done, simply start the application:
+### 5.2 Instalação
 
 ```bash
-npm run dev
+npm install
+cp .env.example .env
+# edite .env: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, SEED_ADMIN_PASSWORD, etc.
 ```
 
----
+### 5.3 Variáveis de ambiente
 
-### Docker
+Todas validadas na inicialização por `EnvConfig` (`src/shared/config/env.config.ts`) — a aplicação falha ao subir se alguma obrigatória estiver ausente ou mal formatada.
 
-All commands use the file:
+| Variável | Obrigatória | Default | Descrição |
+|---|---|---|---|
+| `NODE_ENV` | não | `development` | `development` \| `production` \| `test` |
+| `PORT` | sim | — | Porta HTTP |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | sim | — | Conexão Postgres |
+| `DB_POOL_MAX` / `DB_POOL_MIN` | não | `10` / `0` | Pool de conexões Sequelize |
+| `DB_POOL_IDLE_MS` / `DB_POOL_ACQUIRE_MS` | não | `10000` / `30000` | Timeouts do pool |
+| `DB_SSL` | não | `false` | Ativa `ssl.rejectUnauthorized: false` na conexão |
+| `REDIS_HOST`, `REDIS_PORT` | sim | — | Conexão Redis (cache + BullMQ) |
+| `REDIS_PASSWORD` | não | — | — |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | sim | — | Segredos **distintos** para access e refresh token |
+| `JWT_ACCESS_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | não | `15m` / `7d` | TTL dos tokens |
+| `BCRYPT_SALT_ROUNDS` | não | `10` | Rounds de hash (senha e código de verificação) |
+| `SMTP_HOST`, `SMTP_FROM` | sim | — | Envio de e-mail |
+| `SMTP_PORT` | não | `587` | — |
+| `SMTP_USER` / `SMTP_PASSWORD` | não | — | — |
+| `SMTP_SECURE` | não | `false` | — |
+| `CORS_ORIGIN` | não | `*` | `*` ou lista separada por vírgula |
+| `THROTTLE_TTL_MS` / `THROTTLE_LIMIT` | não | `60000` / `100` | Janela e limite do rate limiter global |
+| `SEED_ADMIN_NAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | apenas para `seed:up` | — | **Não lidas pela aplicação em runtime** — só pelo seeder do admin inicial |
 
-```text
-docker/docker-compose.yml
-```
-
-#### `npm run docker:up`
-
-Starts all the infrastructure defined in Docker Compose.
-
-Use this command when you want to bring up all of the application's services.
-
----
-
-#### `npm run docker:down`
-
-Stops all application containers while keeping the volumes.
-
----
-
-#### `npm run docker:restart`
-
-Restarts all containers.
-
-Very useful after changes to Docker configuration.
-
----
-
-#### `npm run docker:logs`
-
-Displays the logs of all services in real time.
-
----
-
-#### `npm run docker:build`
-
-Rebuilds all application images.
-
-Use this command whenever there are changes to the `Dockerfile`.
-
----
-
-#### `npm run docker:clean`
-
-Completely removes the Docker infrastructure.
-
-This command:
-
-- stops the containers;
-- removes the volumes;
-- removes orphaned containers.
-
-> **Warning:** all persisted PostgreSQL and Redis data will be removed.
-
----
-
-### Database
-
-The commands below control only PostgreSQL and Redis.
-
----
-
-#### `npm run db:up`
-
-Starts only the containers responsible for data persistence.
-
-Services started:
-
-- PostgreSQL
-- Redis
-
----
-
-#### `npm run db:down`
-
-Stops only the database services.
-
-The application remains unaffected.
-
----
-
-#### `npm run db:restart`
-
-Restarts only PostgreSQL and Redis.
-
----
-
-#### `npm run db:logs`
-
-Displays the PostgreSQL and Redis logs.
-
-Ideal for debugging connection or startup issues.
-
----
-
-#### `npm run db:reset`
-
-Completely removes the database volumes and creates a new instance.
-
-Flow executed:
-
-1. Removes containers and volumes.
-2. Starts PostgreSQL and Redis.
-3. The database will be empty.
-
-After running this command, it's recommended to run again:
+### 5.4 Subindo com Docker (recomendado)
 
 ```bash
+npm run docker:up          # sobe app + postgres + redis (build target: development)
+npm run migration:up       # roda as 7 migrations
+npm run seed:up            # cria o admin inicial (usa SEED_ADMIN_* do .env)
+npm run docker:logs        # acompanha os logs
+```
+
+A API sobe em `http://localhost:${PORT}`, com hot-reload (`nest start --watch`) via bind mount do código-fonte.
+
+### 5.5 Executando localmente (sem Docker para a app)
+
+```bash
+npm run db:up               # só postgres + redis via Docker
 npm run migration:up
 npm run seed:up
+npm run start:dev           # nest start --watch
 ```
 
-or simply:
+### 5.6 Produção
 
 ```bash
-npm run setup
+docker build --target production -t clickbeard-api .
+docker run --env-file .env -p 3000:3000 clickbeard-api
 ```
 
----
+O estágio `production` do `Dockerfile` copia apenas o `dist/` compilado e instala só `dependencies` (sem devDependencies).
 
-#### `npm run redis:flush`
-
-Removes all keys stored in Redis.
-
-This command is useful during development when you need to clear:
-
-- cache;
-- queues;
-- sessions;
-- distributed locks.
-
-Does not affect PostgreSQL.
-
----
-
-### Migrations
-
-#### `npm run migration:generate`
-
-Creates a new migration.
-
-Example:
+### 5.7 Testes
 
 ```bash
-npm run migration:generate -- create-users-table
+npm test                    # testes unitários (*.spec.ts, co-localizados no código)
+npm run test:cov            # com relatório de cobertura
+npm run test:e2e            # suite e2e (requer Postgres/Redis reais rodando — ver seção 12)
 ```
 
----
-
-#### `npm run migration:up`
-
-Runs all pending migrations.
-
----
-
-#### `npm run migration:down`
-
-Reverts the last executed migration.
-
----
-
-#### `npm run migration:reset`
-
-Removes all executed migrations.
-
-Normally used only during development.
-
----
-
-#### `npm run migration:status`
-
-Lists every migration and whether it's currently applied (`up`) or not (`down`).
-
----
-
-### Seeders
-
-#### `npm run seed:up`
-
-Runs all seeders.
-
-Used to populate the database with initial data.
-
----
-
-#### `npm run seed:down`
-
-Removes all data inserted by the seeders.
-
----
-
-### Recommended Workflow
-
-#### First run
+### 5.8 Build
 
 ```bash
-git clone <repository>
-
-cd project
-
-npm run setup
-
-npm run dev
+npm run build                # nest build -> dist/
+npm run start:prod           # node dist/main
 ```
+
+### 5.9 Documentação interativa
+
+Com a aplicação rodando: `http://localhost:${PORT}/docs` (Swagger UI, gerado a partir dos DTOs decorados).
 
 ---
 
-#### Daily development
+## 6. Funcionamento da Aplicação
 
-If the infrastructure already exists:
+Toda requisição HTTP segue o mesmo caminho, independente do módulo:
 
-```bash
-npm run db:up
-
-npm run dev
+```
+Cliente
+  │  HTTP request (JSON)
+  ▼
+Guard (opcional — AccessTokenGuard + RolesGuard/SelfOrAdminGuard)
+  │  valida JWT, injeta request.user
+  ▼
+Controller (presentation/controllers)
+  │  ValidationPipe já validou o DTO de entrada
+  │  monta o input do use case, injeta requesterId quando relevante
+  ▼
+Use Case (core/application/use-cases)
+  │  orquestra: busca via Repository Port, valida regra via Entidade/Policy,
+  │  persiste via Repository Port, publica Domain Event se necessário
+  ▼
+Repository Port (interface, core/application/ports)
+  │  resolvido pelo Nest DI para a implementação concreta
+  ▼
+Repository Implementation (infrastructure/persistence)
+  │  Sequelize: monta a query, mapeia row ↔ Entidade
+  ▼
+PostgreSQL
+  │  retorna rows
+  ▼
+Repository Implementation
+  │  reconstrói a Entidade de Domínio (Entity.restore(...))
+  ▼
+Use Case
+  │  mapeia Entidade → DTO de saída (mapper)
+  ▼
+Controller
+  │  retorna o DTO (FieldSelectionInterceptor pode filtrar campos via ?fields=)
+  ▼
+Cliente
+  HTTP response (200/201/204, ou 4xx mapeado por DomainErrorFilter)
 ```
 
-or, if the entire application is dockerized:
-
-```bash
-npm run docker:up
-```
+Cada etapa tem uma responsabilidade única e não conhece a etapa duas posições adiante: o Controller não sabe que existe Sequelize; o Use Case não sabe que existe Express; a Entidade não sabe que existe HTTP.
 
 ---
 
-#### Restart only the databases
+## 7. Comunicação Entre os Módulos
 
-```bash
-npm run db:restart
+Módulos se comunicam de **duas formas**, nunca chamando a Application de outro módulo diretamente:
+
+1. **Eventos de domínio assíncronos** (a forma preferida) — publicados via o Port `EventBus`, entregues por fila (ver seção 10). É assim que `identity`→`notification`, `auth`→`account-verification`, `account-verification`→`notification` se comunicam.
+2. **Ports read-only síncronos**, quando um módulo precisa ler (nunca escrever) um dado que pertence a outro contexto, sem esperar um evento. Exemplo: `scheduling` precisa saber se um barbeiro existe/está ativo e quais qualificações ele tem — em vez de importar o módulo `barber`, declara seu próprio Port `BarberDirectory` (com o shape mínimo que precisa, `BarberSnapshot`), implementado em `infrastructure` por uma query SQL direta nas tabelas `barbers`/`users`/`barbers_qualifications` (não usa os models Sequelize do módulo `barber`). Isso preserva o isolamento do bounded context até na camada de infraestrutura.
+
+### 7.1 Bounded Contexts e seus Ports de leitura cross-module
+
+| Módulo consumidor | Port declarado | Implementado lendo de |
+|---|---|---|
+| `scheduling` | `BarberDirectory` | tabelas `barbers`/`users`/`barbers_qualifications` (SQL direto, não os models do módulo `barber`) |
+| `barber` | `QualificationRepository` (do módulo `qualification`, injetado via `forwardRef`) | módulo `qualification` diretamente — única exceção ao padrão acima, documentada e deliberada |
+
+### 7.2 Diagrama de comunicação entre módulos
+
+```mermaid
+graph TB
+    subgraph "Requisição síncrona (HTTP)"
+        Identity2["identity"]
+        Auth2["auth"]
+        Scheduling2["scheduling"] -->|BarberDirectory port<br/>read-only| BarberTables[("tabelas de barber<br/>via SQL direto")]
+    end
+
+    subgraph "Comunicação assíncrona (eventos)"
+        Identity["identity"] -->|UserRegistered<br/>PasswordChanged| Bus((QueueEventBus))
+        Auth["auth"] -->|UserLoggedIn| Bus
+        AccountVerification["account-verification"] -->|VerificationCodeGenerated<br/>VerificationFailed/Succeeded| Bus
+        Scheduling["scheduling"] -->|AppointmentCreated<br/>AppointmentCancelled| Bus
+
+        Bus -->|domain-events.notifications| NotifChannel["fila: NOTIFICATIONS"]
+        Bus -->|domain-events.account-verification| AVChannel["fila: ACCOUNT_VERIFICATION"]
+
+        NotifChannel --> Notification["notification<br/>(DomainEventsConsumer)"]
+        AVChannel --> AccountVerificationConsumer["account-verification<br/>(UserLoggedInConsumer)"]
+
+        Notification --> SMTP["SMTP"]
+    end
 ```
+
+Nenhum publisher sabe quem consome seu evento — `identity` publica `UserRegistered` sem saber que `notification` existe. Isso é o que permite adicionar um novo consumidor (ex.: um futuro `AnalyticsCountersConsumer`) sem tocar em nenhum publisher existente.
 
 ---
 
-#### Completely clean the environment
+## 8. Banco de Dados
 
-```bash
-npm run docker:clean
+**PostgreSQL 17**, acessado via Sequelize apenas pela camada `infrastructure/persistence` de cada módulo. Schema versionado por 7 migrations (`database/migrations/`, `sequelize-cli`).
 
-npm run setup
+### 8.1 Entidades e relacionamentos
+
+```mermaid
+erDiagram
+    users ||--o| barbers : "1:1 (PK compartilhada)"
+    users ||--o{ refresh_tokens : "1:N"
+    users ||--o{ verification_codes : "1:N"
+    users ||--o{ appointments : "1:N (customer)"
+    barbers ||--o{ appointments : "1:N"
+    barbers ||--o{ barbers_qualifications : "1:N"
+    qualifications ||--o{ barbers_qualifications : "1:N"
+    qualifications ||--o{ appointments : "1:N"
+    refresh_tokens ||--o| refresh_tokens : "replaced_by_token_id"
+
+    users {
+        uuid id PK
+        string name
+        string email UK
+        string password_hash
+        enum role "CLIENT|BARBER|ADMIN"
+        boolean active
+    }
+    barbers {
+        uuid id PK_FK "= users.id"
+        string name
+        int age
+        date hired_at
+    }
+    qualifications {
+        uuid id PK
+        string name UK
+        text description
+    }
+    barbers_qualifications {
+        uuid barber_id PK_FK
+        uuid qualification_id PK_FK
+    }
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        string token_hash UK
+        timestamp expires_at
+        timestamp revoked_at
+        uuid replaced_by_token_id FK
+    }
+    verification_codes {
+        uuid id PK
+        uuid user_id FK
+        string code_hash
+        timestamp expires_at
+        int attempts
+        timestamp consumed_at
+        timestamp invalidated_at
+    }
+    appointments {
+        uuid id PK
+        uuid customer_id FK
+        uuid barber_id FK
+        uuid qualification_id FK
+        timestamp start_at
+        timestamp end_at
+        enum status "SCHEDULED|CANCELLED"
+        timestamp cancelled_at
+    }
 ```
 
+### 8.2 Tabelas (na ordem das migrations)
+
+**`users`** — `id UUID PK`, `name`, `email` (índice único `users_email_unique`), `password_hash`, `role ENUM('CLIENT','BARBER','ADMIN')` default `CLIENT` (índice `users_role_idx`), `active BOOLEAN` default `true`, `created_at`, `updated_at`.
+
+**`qualifications`** — `id UUID PK`, `name` (índice único `qualifications_name_unique`), `description TEXT` opcional, `created_at`, `updated_at`.
+
+**`barbers`** — `id UUID PK`, também **FK para `users.id`** (`onDelete: RESTRICT`) — um barbeiro *é* a extensão de um `User` com `role=BARBER`, não uma entidade independente com id próprio. `name`, `age INTEGER`, `hired_at DATE`, `created_at`, `updated_at`.
+
+**`barbers_qualifications`** (tabela de junção N:N) — PK composta (`barber_id`, `qualification_id`), `barber_id FK` (`onDelete: CASCADE`), `qualification_id FK` (`onDelete: RESTRICT` — não é possível excluir uma qualificação em uso), índice em `qualification_id`. A PK composta já garante "sem qualificação duplicada por barbeiro", sem precisar de índice único adicional.
+
+**`refresh_tokens`** — `id UUID PK`, `user_id FK` (`onDelete: CASCADE`), `token_hash` (índice único `refresh_tokens_token_hash_unique` — o token nunca é guardado em texto puro), `expires_at`, `revoked_at` opcional, `replaced_by_token_id` (FK auto-referenciada, `onDelete: SET NULL` — encadeia a rotação), `created_at`. Índice em `user_id`.
+
+**`verification_codes`** — `id UUID PK`, `user_id FK` (`onDelete: CASCADE`), `code_hash` (nunca texto puro), `expires_at`, `attempts INTEGER` default `0`, `consumed_at`/`invalidated_at` opcionais, `created_at`. Índices em `user_id` e `expires_at`.
+
+**`appointments`** — `id UUID PK`, `customer_id FK → users` (`RESTRICT`), `barber_id FK → barbers` (`RESTRICT`), `qualification_id FK → qualifications` (`RESTRICT`), `start_at`/`end_at`, `status ENUM('SCHEDULED','CANCELLED')` default `SCHEDULED`, `cancelled_at` opcional, `created_at`, `updated_at`. Índices em `customer_id` e `start_at`.
+
+### 8.3 Constraint que garante a regra de negócio mais importante
+
+```sql
+CREATE UNIQUE INDEX appointments_barber_id_start_at_active_unique
+  ON appointments (barber_id, start_at)
+  WHERE status = 'SCHEDULED';
+```
+
+Um **índice único parcial**: só considera linhas com `status = 'SCHEDULED'`. Isso é o que impede double-booking (dois agendamentos ativos para o mesmo barbeiro no mesmo horário) **no nível do banco**, não só na Application — mesmo sob concorrência, o Postgres rejeita a segunda inserção. Um horário cancelado libera o slot automaticamente para uma nova reserva, porque deixa de satisfazer o `WHERE`.
+
+### 8.4 Estratégia de persistência
+
+- Toda tabela usa `UUID` como chave primária (gerado em `Entity.create()`, na camada de Domínio — nunca `SERIAL`/autoincrement do banco, para que a entidade tenha um id válido antes mesmo de ser persistida).
+- `barbers.id` é deliberadamente igual a `users.id` (não um UUID novo) — modela explicitamente "Barber é um papel que User assume", evitando um segundo id para a mesma pessoa.
+- Toda migration que precisa de índice único usa `queryInterface.addIndex(...)` explícito em vez de `unique: true` inline na coluna — mais confiável entre dialetos, e comentado como tal nas próprias migrations.
+- `AsyncLocalStorage` (`shared/database/transaction-context.ts`) propaga a transação Sequelize ativa implicitamente por todos os repositórios chamados dentro de `TransactionManager.runInTransaction(...)`, sem precisar passar a transação manualmente por cada camada.
+- Erros brutos do driver (`pg`/Sequelize) nunca vazam para fora de um repositório: `mapToPersistenceError()` os traduz para `DatabaseUnavailableError` / `DatabaseTimeoutError` / `DatabaseConflictError` / `UnexpectedPersistenceError` (ver seção 13).
+
 ---
+
+## 9. Cache
+
+**Redis**, acessado via o Port `CacheManager` (implementado por `RedisCacheManager`). Aplicado por composição, não por decorator espalhado pelo código: cada use case cacheável é envolvido por `CachedUseCase` (leitura) ou `CacheInvalidatingUseCase` (escrita que invalida) na hora de ser registrado no `index.module.ts` do módulo — o use case em si não sabe que está sendo cacheado.
+
+### 9.1 Recursos cacheados e TTL
+
+| `CacheResource` | TTL | Use case | Chave |
+|---|---|---|---|
+| `USER_PROFILE` | 5 min | `GetUserProfileUseCase` | `user:{userId}` |
+| `BARBER` | 5 min | `GetBarberUseCase` | `barber:{barberId}` |
+| `BARBERS_LIST` | 5 min | `ListBarbersUseCase` | `barbers:list:{page}` |
+| `QUALIFICATIONS` | 15 min | `ListQualificationsUseCase` | `qualifications` (chave única, lista global) |
+| `APPOINTMENT` | 1 min | `GetAppointmentUseCase` | `appointment:{id}:{requesterId}` (**escopada por requester**) |
+| `CUSTOMER_APPOINTMENTS` | 1 min | `ListCustomerAppointmentsUseCase` | `appointments:{customerId}:{page}` |
+| `TODAY_APPOINTMENTS` | 1 min | `ListTodayAppointmentsUseCase` | `appointments:today:{page}` |
+| `FUTURE_APPOINTMENTS` | 1 min | `ListFutureAppointmentsUseCase` | `appointments:future:{page}` |
+| `AVAILABLE_TIME_SLOTS` | 30 s | `ListAvailableTimeSlotsUseCase` | `time-slots:{barberId}:{data}:{qualificationId}` |
+| `DASHBOARD_METRICS` | 5 min | `GetDashboardMetricsUseCase` | `dashboard:{período}` |
+| `USER_METRICS` / `APPOINTMENT_METRICS` / `BARBER_METRICS` / `OCCUPATION_METRICS` | 5 min | respectivos use cases de analytics | `metrics:{tipo}:{período}` |
+| `CUSTOMER_METRICS` | 5 min | `GetCustomerMetricsUseCase` | `metrics:customers:{período}:{customerId ou 'all'}` |
+
+TTL default para qualquer recurso não mapeado: 1 hora (`DEFAULT_TTL_SECONDS`, `StaticCachePolicy`).
+
+### 9.2 Por que `TODAY_APPOINTMENTS`/`FUTURE_APPOINTMENTS`/analytics não são escopados por usuário
+
+Essas chaves **não** incluem o id do requester, ao contrário de `APPOINTMENT` (que inclui). Isso é seguro porque as rotas que os alimentam (`GET /appointments/today`, `/future`, e todas as de `/analytics/*`) são `@Auth(UserRole.ADMIN)` — o guard roda **antes** de qualquer leitura de cache, então nenhum não-admin consegue chegar ao dado cacheado nem por um "hit" populado por outro admin. Um recurso que exige checagem de dono dentro do próprio use case (como `GetAppointmentUseCase`, que aceita tanto o dono quanto um admin) precisa da chave escopada, porque o cache-hit pularia essa checagem.
+
+### 9.3 Invalidação
+
+Toda escrita relevante invalida por **prefixo** (`deleteByPrefix`, via `SCAN` + `DEL` em lote, nunca `KEYS *` bloqueante), não por chave exata — porque uma escrita normalmente invalida várias páginas/variações de uma vez:
+
+- `CreateAppointmentUseCase`/`CancelAppointmentUseCase` invalidam: o slot de horário do barbeiro no dia (`barberTimeSlotsPrefix`), a lista de agendamentos do cliente (`customerAppointmentsPrefix`), **e** `todayAppointmentsPrefix()`/`futureAppointmentsPrefix()` — confirmado necessário porque a query real (`findByDate`/`findUpcoming`) não filtra por status, então até um agendamento cancelado continua aparecendo nessas listas.
+- `CreateBarberUseCase`/`UpdateBarberUseCase`/`AddQualificationToBarberUseCase`/`RemoveQualificationFromBarberUseCase` invalidam `barber:{id}` e `barbers:list:*`.
+- `CreateQualificationUseCase`/`UpdateQualificationUseCase`/`DeleteQualificationUseCase` invalidam a chave única `qualifications`.
+- `ChangePasswordUseCase`/`ChangeUserRoleUseCase`/`DeactivateUserUseCase`/`ActivateUserUseCase` invalidam `user:{id}`.
+
+### 9.4 Impacto de uma falha do Redis
+
+Ver seção 13 — o cache **nunca** propaga uma falha de conexão para o use case; degrada para miss/no-op silencioso.
+
+---
+
+## 10. Eventos
+
+Toda comunicação assíncrona usa a mesma abstração: um use case publica um `DomainEvent` através do Port `EventBus`; `QueueEventBus` (implementação real) **replica o evento em todas as filas de assinantes** (fan-out); cada módulo assinante roda seu próprio `Worker` BullMQ e filtra pelo `name` do evento que lhe interessa.
+
+```mermaid
+graph LR
+    subgraph Channels["Filas (BullMQ), uma por assinante"]
+        C1["domain-events.notifications"]
+        C2["domain-events.account-verification"]
+    end
+
+    Bus(["QueueEventBus.publish(event)"]) -->|enqueue em TODAS as filas| C1
+    Bus -->|enqueue em TODAS as filas| C2
+
+    C1 --> DEC["DomainEventsConsumer<br/>(notification)"]
+    C2 --> ULC["UserLoggedInConsumer<br/>(account-verification)"]
+
+    DEC --> DNU["DispatchNotificationUseCase"]
+    DNU -->|se existir template<br/>e recipientEmail| SMTP["SmtpNotificationSender"]
+
+    ULC -->|filtra name === 'UserLoggedIn'| GVC["GenerateVerificationCodeUseCase"]
+```
+
+Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consumer* — dois `Worker`s na mesma fila dividem os jobs entre si, um nunca recebe o que o outro já pegou. Como `notification` e `account-verification` precisam **cada um** ver todo `UserLoggedIn`, cada assinante tem sua própria fila nomeada (`DOMAIN_EVENTS_CHANNELS`), e o publisher grava a cópia do evento em todas elas — o mesmo formato de um tópico SNS alimentando várias filas SQS.
+
+### 10.1 Catálogo de eventos
+
+| Evento (`name`) | Publicado por | Payload | `recipientEmail`? | Consumido por |
+|---|---|---|---|---|
+| `UserRegistered` | `RegisterUserUseCase` | `{ name }` | sim | `notification` (e-mail de boas-vindas) |
+| `PasswordChanged` | `ChangePasswordUseCase` | `{ name }` | sim | `notification` (alerta de segurança) |
+| `UserLoggedIn` | `LoginUseCase` | `{ userId, name }` | sim | `notification` (e-mail "novo login") **e** `account-verification` (`UserLoggedInConsumer`, dispara a geração do código) |
+| `VerificationCodeGenerated` | `GenerateVerificationCodeUseCase` | `{ name, code }` (código **em texto puro**, só existe neste payload em memória — no banco já está hasheado) | sim | `notification` (e-mail com o código) |
+| `VerificationFailed` | `ValidateVerificationCodeUseCase` | `{ userId, reason }` | não | nenhum consumidor hoje (publicado para observabilidade/uso futuro) |
+| `VerificationSucceeded` | `ValidateVerificationCodeUseCase` | `{ userId }` | não | nenhum consumidor hoje |
+| `AppointmentCreated` | `CreateAppointmentUseCase` | `{ appointmentId, customerId, barberId, qualificationId, startAt }` | não | nenhum consumidor hoje |
+| `AppointmentCancelled` | `CancelAppointmentUseCase` | `{ appointmentId, customerId, barberId, startAt }` | não | nenhum consumidor hoje |
+
+Eventos sem `recipientEmail` ou sem template cadastrado em `StaticMessageTemplateProvider` simplesmente não geram e-mail — `DispatchNotificationUseCase` faz no-op nesses casos por design, não é uma lacuna.
+
+### 10.2 Fluxo completo: login → verificação → sessão
+
+O fluxo mais complexo do sistema. Login **nunca** emite token na mesma requisição — só confirma a senha e dispara, de forma assíncrona, o envio de um código por e-mail que precisa ser validado antes de qualquer sessão existir.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AuthCtrl as AuthController
+    participant Login as LoginUseCase
+    participant Bus as QueueEventBus
+    participant ULC as UserLoggedInConsumer
+    participant GVC as GenerateVerificationCodeUseCase
+    participant DEC as DomainEventsConsumer
+    participant DNU as DispatchNotificationUseCase
+    participant SMTP as SmtpNotificationSender
+    participant AVCtrl as AccountVerificationController
+    participant Validate as ValidateVerificationCodeUseCase
+    participant Complete as CompleteAuthenticationUseCase
+    participant Session as AuthSessionManager
+
+    C->>AuthCtrl: POST /auth/login {email, senha}
+    AuthCtrl->>Login: execute()
+    Login->>Login: valida credenciais
+    Login->>Bus: publish(UserLoggedInEvent)
+    Login-->>AuthCtrl: {user} — SEM tokens
+    AuthCtrl-->>C: 200 {user}
+
+    par processamento assíncrono
+        Bus->>ULC: evento na fila account-verification
+        ULC->>GVC: execute(userId, email, name)
+        GVC->>GVC: gera código, hasheia (bcrypt), invalida código anterior ativo
+        GVC->>Bus: publish(VerificationCodeGeneratedEvent {code em texto puro})
+        Bus->>DEC: evento na fila notifications
+        DEC->>DNU: execute(VerificationCodeGeneratedEvent)
+        DNU->>SMTP: envia e-mail "seu código é {code}"
+    and
+        Bus->>DEC: UserLoggedInEvent também cai na fila notifications
+        DEC->>DNU: execute(UserLoggedInEvent)
+        DNU->>SMTP: envia e-mail "novo login detectado"
+    end
+
+    C->>AVCtrl: POST /account-verification/validate {userId, code}
+    AVCtrl->>Validate: execute()
+    Validate->>Validate: compara hash, checa expiração/tentativas
+    Validate-->>AVCtrl: {verified: true}
+    AVCtrl-->>C: 200
+
+    C->>AVCtrl: POST /account-verification/complete {userId}
+    AVCtrl->>Complete: execute()
+    Complete->>Complete: exige último código com status "consumido"
+    Complete->>Session: createSession(userId)
+    Session-->>Complete: {accessToken, refreshToken}
+    Complete-->>AVCtrl: tokens
+    AVCtrl-->>C: 200 {accessToken, refreshToken}
+```
+
+### 10.3 Job recorrente (não é um evento, mas usa a mesma infraestrutura BullMQ)
+
+`ExpiredCodesSweepScheduler` roda `InvalidateExpiredVerificationCodesUseCase` a cada 15 minutos, numa fila BullMQ própria (`account-verification.expired-codes-sweep`) com `repeat.jobId` fixo — o BullMQ deduplica pelo `jobId`, então rodar a aplicação em várias instâncias nunca dispara a varredura mais de uma vez por intervalo (um `setInterval` por processo, em contraste, disparia uma vez por instância).
+
+---
+
+## 11. Regras de Negócio
+
+### 11.1 Identity (usuários)
+
+| Regra | Detalhe |
+|---|---|
+| E-mail válido | Regex `^[^\s@]+@[^\s@]+\.[^\s@]+$`, normalizado para minúsculas e trim antes de comparar/persistir |
+| Senha forte | Mínimo 8 caracteres, pelo menos 1 letra e 1 número (`PlainPassword.create`) |
+| Papéis | `CLIENT` (default no cadastro), `BARBER`, `ADMIN` |
+| **`ADMIN` só é criado/promovido por outro `ADMIN`** | `RegisterUserUseCase` exige `requesterId` de um admin existente quando `role=ADMIN`; `ChangeUserRoleUseCase` idem. Sem isso, não existiria forma de criar o primeiro admin — daí o seeder |
+| Um `ADMIN` nunca pode ser desativado, por ninguém | `User.deactivate()` rejeita incondicionalmente quando `role === ADMIN` (`AdminCannotBeDeactivatedError`), antes mesmo de checar se já está inativo |
+| Trocar para a mesma senha/papel é rejeitado | `SamePasswordError` / `SameUserRoleError` |
+
+### 11.2 Auth (sessão)
+
+| Regra | Detalhe |
+|---|---|
+| Login não emite sessão | Só confirma credenciais e publica `UserLoggedIn` — tokens só existem após a verificação de 2 etapas |
+| Access e refresh token com segredos/TTL independentes | `JWT_ACCESS_SECRET`/`JWT_ACCESS_EXPIRES_IN` (default 15m) vs `JWT_REFRESH_SECRET`/`JWT_REFRESH_EXPIRES_IN` (default 7d) |
+| Refresh token é rotativo | Cada `POST /auth/refresh-token` revoga o token usado e emite um par novo, encadeado via `replaced_by_token_id` — um refresh token só pode ser usado uma vez |
+| Refresh token guardado como hash | `token_hash` (SHA-256), nunca o token em texto puro no banco |
+| Logout revoga o refresh token | Torna-o inutilizável mesmo que ainda não tenha expirado |
+
+### 11.3 Account Verification (2FA)
+
+| Regra | Detalhe |
+|---|---|
+| Código expira em 10 minutos | `CODE_TTL_MINUTES = 10` |
+| Máximo 5 tentativas | `MAX_ATTEMPTS = 5` — excedido, `VerificationCodeAttemptsExceededError` |
+| Um único código ativo por usuário | Gerar um novo (login ou resend) invalida qualquer código anterior ainda ativo |
+| Código hasheado com bcrypt | Nunca fica em texto puro no banco — só existe em claro no payload em memória do evento, até ser enviado por e-mail |
+| Sessão só é criada se o **último** código estiver consumido | `CompleteAuthenticationUseCase` re-checa isso no banco, não confia que `validate` foi chamado antes |
+| Varredura periódica invalida códigos expirados | A cada 15 minutos, via `ExpiredCodesSweepScheduler` |
+
+### 11.4 Barber
+
+| Regra | Detalhe |
+|---|---|
+| Idade entre 18 e 100 anos | `Age.create()` |
+| Só um `User` com `role=BARBER` pode virar barbeiro | `UserIsNotBarberError` senão |
+| Um barbeiro precisa de ao menos 1 qualificação | Na criação e ao tentar remover a última (`BarberMustHaveAtLeastOneQualificationError`) |
+| Data de contratação não pode ser futura | `InvalidHiringDateError` |
+| Qualificação não pode ser adicionada duas vezes | `QualificationAlreadyAssignedError` |
+
+### 11.5 Qualification
+
+| Regra | Detalhe |
+|---|---|
+| Nome com mínimo 2 caracteres (trimado) | `InvalidQualificationNameError` |
+| Nome único | Constraint no banco (`qualifications_name_unique`) → `QualificationAlreadyExistsError` |
+| Não é possível excluir uma qualificação em uso | FK `RESTRICT` de `barbers_qualifications.qualification_id` → `QualificationInUseError` |
+
+### 11.6 Scheduling (agendamentos)
+
+| Regra | Detalhe |
+|---|---|
+| Horário comercial fixo | 08:00–18:00 (`OPENING_HOUR`/`CLOSING_HOUR`) |
+| Slots de 30 minutos, alinhados à grade | `APPOINTMENT_DURATION_MINUTES = 30`; um horário fora da grade ou fora do expediente é `InvalidTimeSlotError` |
+| **Aviso mínimo de 2 horas**, simétrico | `MIN_APPOINTMENT_NOTICE_MS = 2h` — se aplica tanto para **reservar** (`AppointmentTooSoonError`) quanto para **cancelar** (`CancellationWindowExpiredError`) um horário |
+| Sem double-booking | Checado na Application (`AvailabilityService.isBarberAvailable`, dentro de uma transação) **e** garantido no banco pelo índice único parcial (seção 8.3) — dupla camada de proteção |
+| Barbeiro precisa ter a qualificação pedida | `BarberDoesNotHaveQualificationError` |
+| Cancelamento só pelo próprio cliente | `CancelAppointmentUseCase` não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento (diferente de `GetAppointmentUseCase`, que permite dono OU admin) |
+| Listagens administrativas (`/today`, `/future`) exigem `ADMIN` | Reforçado tanto no guard do controller quanto no `ensureRequesterIsAdmin` dentro do use case |
+
+### 11.7 Analytics
+
+| Regra | Detalhe |
+|---|---|
+| Toda métrica exige `ADMIN` | `ensureRequesterIsAdmin` em todo use case |
+| Filtro de período obrigatório (`preset`) | `TODAY`/`WEEK`/`MONTH`/`YEAR`/`CUSTOM` |
+| `CUSTOM` exige `startAt`/`endAt` explícitos | `CustomRangeRequiredError` senão |
+| Intervalo customizado inválido (fim antes do início) | `InvalidDateRangeError` |
+
+### 11.8 Tratamento de exceções — taxonomia de erros
+
+Toda regra de negócio violada lança uma subclasse de uma das 5 categorias base (`src/shared/domain/errors/`), nunca uma exceção genérica. O `DomainErrorFilter` global mapeia a categoria para o status HTTP — o erro concreto nunca precisa saber sobre HTTP:
+
+| Categoria base | Status HTTP | Qtde de subclasses no projeto | Exemplos |
+|---|---|---|---|
+| `NotFoundError` | 404 | 8 | `BarberNotFoundError`, `QualificationNotFoundError`, `AppointmentNotFoundError`, `VerificationCodeNotFoundError` |
+| `ConflictError` | 409 | 11 | `UserAlreadyExistsError`, `BarberTimeSlotConflictError`, `QualificationInUseError`, `AppointmentAlreadyCancelledError` |
+| `UnauthorizedError` | 401 | 4 | `InvalidCredentialsError`, `InvalidRefreshTokenError`, `RefreshTokenExpiredError` |
+| `ForbiddenError` | 403 | 6 | `UserIsNotAdminError` (×5, um por módulo que reimplementa a policy), `AppointmentAccessDeniedError` |
+| `ValidationError` | 400 | ~25 | `WeakPasswordError`, `InvalidTimeSlotError`, `AppointmentTooSoonError`, `InvalidVerificationCodeError`, `CancellationWindowExpiredError` |
+
+`PersistenceError` (erros de infraestrutura de banco) e `MessageQueueUnavailableError` **deliberadamente não** estendem `DomainError` — continuam caindo no filtro default do Nest e retornando 500, porque uma falha de infraestrutura não é uma regra de negócio violada (ver seção 13).
+
+---
+
+## 12. Cobertura de Testes
+
+### 12.1 Estratégia
+
+Dois níveis, sem sobreposição de responsabilidade:
+
+- **Unitários** (`*.spec.ts`, co-localizados ao lado de cada arquivo): cobrem entidades, value objects, use cases (com Ports mockados), policies e mappers. Rodam com `npm test`, sem nenhuma dependência externa.
+- **End-to-end** (`test/*.e2e-spec.ts`): sobem a aplicação real (`AppModule` completo, `configureApp` idêntico ao `main.ts`) contra Postgres/Redis reais, e validam através de requisições HTTP reais (via `supertest`) que cada rota está exposta, corretamente protegida e efetivamente funcional — não só que o código compila.
+
+### 12.2 Testes unitários
+
+Cobrem, por módulo: entidades (invariantes), value objects (validação), todo use case (caminho feliz + cada erro de domínio que ele pode lançar), policies compartilhadas, mappers, guards (`AccessTokenGuard`, `RolesGuard`, `SelfOrAdminGuard`), adapters de infraestrutura com lógica própria (`BcryptPasswordHasher`, `JwtTokenProvider`, `AuthSessionManager`, `RandomVerificationCodeGenerator`, `QueueEventBus`, `FieldSelectionInterceptor`, `CacheKeyGenerator`, os formatters/consumers de `notification`).
+
+```bash
+npm test                 # roda toda a suíte unitária
+npm run test:cov         # com relatório de cobertura em coverage/
+```
+
+### 12.3 Testes end-to-end
+
+`test/support/` contém a infraestrutura compartilhada:
+
+- **`test-app.ts`** — sobe um `AppModule` completo por arquivo de spec (via `Test.createTestingModule`), aplicando `configureApp` exatamente como `main.ts`, com **apenas** o provider `NOTIFICATION_SENDER` substituído por um spy (`overrideProvider`) — é a única forma de capturar o código de verificação, que chega hasheado (irreversível) ao banco.
+- **`notification-sender.spy.ts`** — captura todo e-mail "enviado" e expõe `waitFor(predicate)`, que faz polling (o código é gerado de forma assíncrona por um worker BullMQ real, não na mesma requisição do login).
+- **`api.helpers.ts`** — `registerUser`, `completeLogin` (login → aguarda o e-mail → valida o código → completa a autenticação → retorna tokens reais), `getAdminSession` (login como o admin semeado via `SEED_ADMIN_*`, já que `ADMIN` só pode ser criado por outro `ADMIN`).
+
+| Arquivo | Cobre |
+|---|---|
+| `health.e2e-spec.ts` | `GET /health`, `GET /docs` |
+| `users.e2e-spec.ts` | Cadastro, autenticação direta, perfil (`self`/admin), troca de senha, papel, ativar/desativar |
+| `auth.e2e-spec.ts` | Login (sem sessão), fluxo completo até token, refresh (rotação), logout (revogação) |
+| `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
+| `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
+| `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
+| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento, `/today` e `/future` restritos a admin |
+| `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
+
+**37 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
+
+```bash
+npm run test:e2e     # jest --config ./test/jest-e2e.json --runInBand --forceExit
+```
+
+Roda com `--runInBand` (arquivos de spec em série, não em paralelo) por dois motivos, ambos ligados a estado compartilhado real entre processos:
+1. As filas BullMQ usadas pelos eventos de domínio (`domain-events.*`) são nomeadas globalmente — duas instâncias de app vivas ao mesmo tempo (dois arquivos de spec em paralelo) competiriam como consumers na mesma fila e poderiam "roubar" o evento de verificação um do outro.
+2. Os testes que exigem admin fazem login como o mesmo usuário semeado (`SEED_ADMIN_EMAIL`) — como gerar um novo código invalida o anterior, dois logins concorrentes como o mesmo admin poderiam invalidar o código um do outro.
+
+`--forceExit` existe porque os clientes `ioredis` internos do BullMQ deixam um handle aberto após `app.close()` (cosmético — o shutdown em si já terminou corretamente antes disso); em 8 boots sequenciais de app isso impedia o processo do Jest de encerrar sozinho. `testTimeout` em `test/jest-e2e.json` está em 20s: todo teste que passa pelo login real espera até 10s pelo e-mail assíncrono via `waitFor`, o que já excede o timeout padrão do Jest (5s).
+
+### 12.4 Como rodar a suíte e2e localmente
+
+```bash
+npm run db:up          # Postgres + Redis via Docker
+npm run migration:up
+npm run seed:up        # necessário — os testes de rota admin dependem do admin semeado
+npm run test:e2e
+```
+
+### 12.5 O que ainda não tem teste e2e dedicado
+
+- Cenários de rate limiting (`ThrottlerGuard`) — coberto architeturalmente, não há teste e2e batendo o limite.
+- Falha real de Postgres/Redis em runtime (comportamento coberto por teste unitário de `mapToPersistenceError`/`RedisCacheManager`, não por um teste e2e que efetivamente derruba o container).
+
+---
+
+## 13. Tratamento de Falhas
+
+### PostgreSQL indisponível
+
+- **Impacto**: qualquer use case que precise ler/escrever falha.
+- **Como é tratado**: todo `catch` de repositório chama `mapToPersistenceError(error)`, que inspeciona o erro do driver (`shared/database/sequelize-error.helpers.ts`) e o traduz para uma das 4 subclasses de `PersistenceError`: `DatabaseUnavailableError` (conexão recusada/perdida), `DatabaseTimeoutError`, `DatabaseConflictError` (deadlock), `UnexpectedPersistenceError` (fallback). O erro bruto do Sequelize/`pg` **nunca** vaza para fora do adapter.
+- **Mensagem retornada**: como `PersistenceError` não estende `DomainError`, `DomainErrorFilter` não o intercepta — cai no filtro default do Nest, **HTTP 500**. Isso é intencional: um 500 sinaliza corretamente "problema de infraestrutura", diferente de um 4xx de regra de negócio.
+- **Recuperação**: automática assim que a conexão volta — o pool do Sequelize (`DB_POOL_*`) tenta reconectar; não há circuit breaker.
+- **Observabilidade**: `GET /health` reporta `database.status: "down"` imediatamente via `SequelizeHealthIndicator`.
+
+### Redis indisponível
+
+- **Cache de leitura**: `RedisCacheManager` **nunca propaga** o erro — todo método (`get`/`set`/`delete`/`deleteByPrefix`) tem seu próprio `try/catch` que loga um `warn` e degrada para um no-op seguro (`get` retorna `null` → tratado como cache miss; `set`/`delete` simplesmente não fazem nada). Um Redis fora do ar faz a aplicação funcionar **mais lenta** (toda leitura cai direto no Postgres), nunca indisponível.
+- **Fila (BullMQ)**: diferente do cache, uma falha ao publicar um evento **propaga** (`MessageQueueUnavailableError`) — um evento de domínio tem significado de negócio real (ex.: e-mail de verificação nunca seria enviado se falhasse silenciosamente), então `enqueue()` prefere falhar ruidosamente. Como esse erro também não estende `DomainError`, vira HTTP 500.
+- **Observabilidade**: `GET /health` reporta `redis.status: "down"` via um `RedisHealthIndicator` customizado (Terminus não tem um nativo para Redis).
+
+### Adaptadores externos indisponíveis (SMTP)
+
+- **Timeout/retry**: não há retry automático configurado no `nodemailer`/`SmtpNotificationSender` nem nos jobs BullMQ (nenhuma opção `attempts` configurada nas filas) — um envio de e-mail que falha, falha uma vez.
+- **Impacto**: `SmtpNotificationSender` lança `NotificationDeliveryError` (não documentado como `DomainError`) se o SMTP rejeitar/falhar. Como isso acontece **dentro de um worker BullMQ assíncrono** (nunca na requisição HTTP do login), o cliente já recebeu sua resposta 200 antes disso — a falha fica só nos logs do worker, não é vista pelo usuário na hora.
+- **Consequência prática**: se o SMTP cair exatamente durante o envio do código de verificação, o usuário nunca recebe o código e fica bloqueado no fluxo de 2FA até chamar `POST /account-verification/resend`.
+
+### Filas/eventos indisponíveis
+
+- **Publish falha** (Redis fora do ar no momento do `publish`): o use case publisher propaga a exceção — por exemplo, `LoginUseCase` publicando `UserLoggedInEvent` falharia e o `POST /auth/login` retornaria 500, mesmo as credenciais estando corretas.
+- **Consistência**: como o efeito colateral (código de verificação, e-mails) é **sempre** assíncrono e nunca a fonte de verdade de uma escrita de negócio (ex.: o `User` já foi persistido antes do evento ser publicado em `RegisterUserUseCase`), uma falha no publish nunca deixa o banco em estado inconsistente — só significa que o e-mail correspondente nunca será disparado.
+- **Recuperação**: nenhuma retomada automática de eventos perdidos — não há um outbox pattern. Um evento cujo `enqueue` falhou está perdido.
+
+---
+
+## 14. Segurança
+
+### Autenticação
+
+- **JWT** assinado com `@nestjs/jwt`, dois segredos completamente independentes (`JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET`) — comprometer um não compromete o outro.
+- Cada token carrega `sub` (id do usuário), `role`, e um `jti` (UUID aleatório) — o `jti` existe só para garantir unicidade do hash mesmo que dois tokens sejam emitidos no mesmo segundo (granularidade de `iat`).
+- **Refresh token rotativo com revogação em cadeia**: usar um refresh token gera um par novo e revoga o antigo (`revoked_at` + `replaced_by_token_id`), então um refresh token só pode ser trocado uma vez — reuso de um token já revogado é rejeitado.
+- **2FA obrigatório**: mesmo com credenciais corretas, nenhum token é emitido sem passar pela validação do código enviado por e-mail (seção 10.2).
+
+### Autorização
+
+- `AccessTokenGuard` — valida o JWT e popula `request.user`.
+- `RolesGuard` — usado via `@Auth(...roles)`; sem roles declaradas, qualquer usuário autenticado passa.
+- `SelfOrAdminGuard` — usado via `@SelfOrAdmin()`, para rotas `:id` onde o dono da conta ou um admin podem agir (ex.: `GET /users/:id`, `PATCH /users/:id/password`).
+- Regras adicionais de autorização vivem **na Application**, não só no guard: `ensureRequesterIsAdmin` (reimplementada por módulo, consolidada em `shared/application/policies/`) para operações administrativas dentro de use cases; `GetAppointmentUseCase` permite dono OU admin; `CancelAppointmentUseCase` permite só o dono (nem admin).
+
+### Criptografia e hashing
+
+- **Senhas de usuário**: `bcrypt` (`BCRYPT_SALT_ROUNDS`, default 10), nunca reversível, nunca logado.
+- **Código de verificação**: também hasheado com bcrypt antes de ir ao banco — nem um dump do banco revela o código.
+- **Refresh token**: guardado como SHA-256 (`token_hash`), não bcrypt (token já é aleatório de alta entropia, não uma senha escolhida por humano — SHA-256 é suficiente e evita o custo de bcrypt em toda validação de refresh).
+
+### Gerenciamento de segredos
+
+- Nenhum segredo hardcoded — tudo via variáveis de ambiente, validadas na inicialização (`EnvConfig`, `class-validator`).
+- `.env` está no `.gitignore`; `.env.example` documenta as chaves sem valores reais sensíveis.
+- `SEED_ADMIN_PASSWORD` é lido **só pelo seeder**, nunca pela aplicação em runtime — reduz a superfície que precisa desse segredo.
+
+### Validação de entrada
+
+- `ValidationPipe` global com `whitelist: true` + `forbidNonWhitelisted: true` + `transform: true` — qualquer campo não declarado no DTO é **rejeitado** (400), não apenas ignorado; previne mass assignment.
+- Toda validação de formato (e-mail, UUID, data ISO, enum) acontece em dois níveis: `class-validator` no DTO (shape/tipo, rejeita cedo) e Value Objects no Domain (regra de negócio real, ex. força de senha) — o DTO nunca é a única linha de defesa.
+
+### Headers e transporte
+
+- **Helmet** aplicado globalmente (`app.use(helmet())`).
+- **CORS** configurável (`CORS_ORIGIN`), com `credentials: true`.
+- **Rate limiting** global via `@nestjs/throttler` (`APP_GUARD`), configurável por `THROTTLE_TTL_MS`/`THROTTLE_LIMIT` (default: 100 requisições / 60s, por IP).
+
+---
+
+## 15. Performance
+
+- **Cache Redis** de leitura em praticamente todo endpoint de consulta (seção 9), com TTLs calibrados por volatilidade do dado (30s para disponibilidade de horário, até 15min para o catálogo de qualificações).
+- **Paginação obrigatória** em toda listagem que pode crescer sem limite (`resolvePage`/`computeTotalPages`/`DEFAULT_LIMIT=100`, compartilhados em `shared/application/pagination.ts`) — evita `SELECT *` sem `LIMIT`.
+- **Índices no banco** alinhados aos filtros reais das queries: `users_role_idx`, `appointments_customer_id_idx`, `appointments_start_at_idx`, `verification_codes_user_id_idx`, `verification_codes_expires_at_idx`, `refresh_tokens_user_id_idx` — cada um espelha uma cláusula `WHERE`/`ORDER BY` que o código realmente executa.
+- **Índice único parcial** (seção 8.3) resolve a checagem de double-booking sem precisar de um lock explícito de aplicação além da transação já usada em `CreateAppointmentUseCase`.
+- **Invalidação por prefixo com `SCAN`**, não `KEYS *` — evita bloquear o Redis inteiro ao invalidar um conjunto de chaves.
+- **Eventos assíncronos tiram trabalho do caminho crítico da requisição**: enviar um e-mail (I/O de rede lento, latência variável de um SMTP externo) nunca atrasa a resposta HTTP de login/cadastro — acontece num worker BullMQ separado.
+- **`FieldSelectionInterceptor`** (`?fields=a,b,c`) permite ao cliente pedir só os campos que precisa, reduzindo payload em respostas grandes (listagens).
+- **Pool de conexões Postgres** configurável (`DB_POOL_MAX/MIN/IDLE_MS/ACQUIRE_MS`) em vez de uma conexão por requisição.
+
+---
+
+## 16. Observabilidade
+
+### Health checks
+
+`GET /health` (não autenticado — é o endpoint que um orquestrador/load balancer usa para decidir se roteia tráfego para a instância, então não pode depender de um token). Via `@nestjs/terminus`:
+- `SequelizeHealthIndicator` (nativo do Terminus) — faz um ping real na conexão Postgres.
+- `RedisHealthIndicator` (customizado, `shared/health/indicators/redis.health-indicator.ts`) — `PING` no cliente `ioredis` compartilhado.
+
+Resposta no formato padrão do Terminus: `{ status, info: { database: {status}, redis: {status} }, ... }`.
+
+### Logs
+
+- `Logger` nativo do NestJS, por classe (`new Logger(ClassName.name)`).
+- `main.ts` loga falha fatal de bootstrap.
+- `RedisCacheManager` loga (`warn`) toda degradação para no-op por falha do Redis, sem derrubar a requisição.
+- `ExpiredCodesSweepScheduler` loga quantos códigos expirados foram invalidados a cada execução (só quando > 0).
+- Ambiente `development` do Sequelize loga toda query SQL (`logging: console.log` em `database/config/config.js`); `production`/`test` não logam.
+
+### Métricas
+
+Não há um endpoint `/metrics` (Prometheus ou similar) nem APM integrado. O único mecanismo de métricas de negócio é o próprio módulo `analytics` (seção 11.7), que serve métricas via API para um painel administrativo — não é observabilidade de infraestrutura.
+
+### Tracing
+
+Não implementado — não há correlação de request id nem tracing distribuído (ex. OpenTelemetry) configurado.
+
+---
+
+## 17. Decisões Arquiteturais
+
+| # | Problema | Alternativas consideradas | Solução adotada | Justificativa |
+|---|---|---|---|---|
+| 1 | Como impedir double-booking sob concorrência? | Lock otimista na aplicação; lock pessimista via `SELECT FOR UPDATE`; constraint no banco | Índice único parcial (`WHERE status = 'SCHEDULED'`) + checagem na Application dentro de uma transação | O banco é a única fonte de verdade que não pode ser burlada por uma corrida entre duas requisições simultâneas; a checagem na Application ainda existe para dar um erro de domínio legível (`BarberTimeSlotConflictError`) em vez de estourar a constraint como 500 |
+| 2 | Como propagar um evento para múltiplos assinantes independentes com BullMQ (que é competing-consumer)? | Uma fila única compartilhada (assinantes disputariam jobs entre si) | Uma fila nomeada por assinante (`DOMAIN_EVENTS_CHANNELS`), com o publisher (`QueueEventBus`) escrevendo em todas | Cada assinante precisa ver **todo** evento relevante, não uma fração dividida com os outros — fan-out explícito resolve isso sem introduzir um broker pub/sub adicional |
+| 3 | Como mapear ~55 erros de domínio para status HTTP sem cada um saber sobre HTTP? | Cada `DomainError` carregar seu próprio `httpStatus`; um filtro por classe concreta | 5 classes-base por categoria semântica (`NotFoundError`/`ConflictError`/`UnauthorizedError`/`ForbiddenError`/`ValidationError`), um filtro global que faz `instanceof` | Domain não deveria saber o que é HTTP; categorizar por semântica (não por classe individual) also documenta a intenção de cada erro no próprio nome da classe-base que ele estende |
+| 4 | Quem pode criar o primeiro `ADMIN`, se criar um `ADMIN` exige um `ADMIN` existente? | Rota pública de bootstrap protegida por uma chave secreta; flag de ambiente que auto-promove o primeiro usuário cadastrado | Seeder idempotente (`database/seeders/`), fora do runtime da aplicação | Uma rota HTTP de bootstrap é superfície de ataque permanente mesmo que "desligável"; um seeder só roda uma vez, sob controle de quem tem acesso ao deploy, e nunca fica exposto depois |
+| 5 | Onde barbeiro deveria ter um id próprio ou reusar o do `User`? | Um `barbers.id` novo (UUID independente) + FK para `users.id` | `barbers.id = users.id` (mesma PK) | Barbeiro é um papel que um usuário assume, não uma segunda identidade — evita ter dois ids para a mesma pessoa e simplifica toda query que precisa juntar as duas tabelas |
+| 6 | Cache deveria falhar aberto ou fechado quando o Redis cai? | Propagar o erro (fail-closed) — mais "correto" em teoria | Fail-open: todo método de `RedisCacheManager` engole a exceção e degrada para no-op | Cache é estritamente uma otimização; deixá-lo derrubar o caminho de leitura/escrita principal transformaria uma falha secundária (Redis) num incidente de disponibilidade total, o pior cenário possível para algo que existe só para ser rápido |
+| 7 | Como um módulo lê dado de outro sem acoplar aos seus models internos? | Importar o módulo e seu repositório Sequelize diretamente | Port read-only próprio (`BarberDirectory` em `scheduling`), implementado com SQL direto às tabelas do outro módulo | Mantém o bounded context isolado até na infraestrutura — `scheduling` não sabe (nem precisa saber) que `barber` existe como módulo Nest, só que existe uma tabela com esse shape |
+| 8 | O `Clock` deveria ser uma abstração injetável (Port) ou `new Date()` direto? | Port `Clock` injetável (permite mockar tempo em teste sem `jest.useFakeTimers`) | Removido — `new Date()` direto + `jest.useFakeTimers()` nos testes que precisam controlar tempo | Avaliado como abstração desnecessária: nenhum outro adapter de tempo jamais existiria além do relógio do sistema, e Jest já resolve o problema de teste sem indireção extra em produção |
+| 9 | O módulo `analytics` deveria ter um repositório próprio de contadores (`AnalyticsRepository`, Redis) para métricas incrementais? | Manter a implementação (já pronta, Redis-backed, incremento por evento) | Removida — métricas são calculadas sob demanda via query SQL agregada, não por contador incremental | Sem nenhum consumidor real publicando nos contadores, era código morto adiantado; um contador incremental também só serve totais não-filtrados por período, que é uma fração pequena do que as rotas de analytics realmente precisam (a maioria filtra por `DateRange`) |
+
+---
+
+## 18. Possíveis Melhorias Futuras
+
+- **Outbox pattern** para publicação de eventos, eliminando a janela em que um `enqueue()` falho perde o evento silenciosamente (seção 13).
+- **Retry com backoff** nos jobs BullMQ (SMTP e consumers de evento não têm `attempts`/`backoff` configurados hoje — uma falha transitória de SMTP perde o envio permanentemente).
+- **Tracing distribuído** (OpenTelemetry) e um `request-id` correlacionando logs de uma mesma requisição através dos workers assíncronos que ela dispara.
+- **Endpoint `/metrics`** no formato Prometheus para observabilidade de infraestrutura (latência, taxa de erro, throughput), separado das métricas de negócio já existentes em `analytics`.
+- **Consumidor de `AppointmentCreated`/`AppointmentCancelled`**, hoje publicados sem nenhum assinante — candidatos naturais para uma futura notificação ao barbeiro ou um contador incremental de ocupação.
+- **Teste e2e de rate limiting** e de degradação real (derrubar o container do Postgres/Redis durante a suíte), hoje cobertos só por unit test da lógica de tradução de erro.
+- **Corrigir `db:reset`** em `package.json`, que referencia `docker/docker-compose.yml` (caminho inexistente) em vez de `docker-compose.yml` na raiz.
+
+---
+
+## 19. Contribuição
+
+### Padrões de código
+
+- Sem comentários explicando *o quê* — nomes de classe/método/variável devem ser autoexplicativos. Comentário só quando explica o *porquê* (uma decisão não-óbvia, um trade-off, uma invariante escondida) — é o padrão já seguido em todo o código existente, visível nos doc comments acima de classes-chave.
+- Toda regra de negócio nova vive em `core/domain` (entidade ou value object) ou `core/application` (use case/policy) — nunca em um controller ou DTO.
+- Antes de duplicar uma policy/helper entre módulos, verifique `shared/application/` — `ensureRequesterIsAdmin` e `pagination.ts` já existem para não serem reimplementados por módulo novo.
+- Todo Port novo (`core/application/ports/`) precisa de pelo menos uma implementação real em `infrastructure/` antes de ser mergeado — não deixar contratos órfãos (foi o motivo da remoção do `Clock` e do `AnalyticsRepository`, seção 17).
+
+### Fluxo de Git
+
+- Commits seguem **Conventional Commits** (`npm run commit`, via `commitizen`/`cz-conventional-changelog`): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, etc.
+- Um commit por artefato coeso (uma entidade, um value object, um use case) em vez de commits grandes bundlando mudanças não relacionadas.
+- Nunca `--no-verify`/`--no-gpg-sign` para pular hooks sem justificativa explícita.
+
+### Antes de abrir um PR
+
+```bash
+npx eslint "{src,test}/**/*.ts"   # lint
+npm run build                      # garante que dist/main.js é emitido
+npm test                           # unitários
+npm run test:e2e                   # e2e (requer Postgres/Redis + seed:up)
+```
+
+O CI (`.github/workflows/ci.yml`) roda exatamente essas etapas, mais a reversão completa das migrations e o build da imagem Docker de produção — um PR só deveria ser aberto depois que os quatro jobs passam localmente.
+
+### Boas práticas específicas deste projeto
+
+- Nunca importe uma classe concreta de `infrastructure`/`presentation` de dentro de `core/` — só interfaces (`ports`) e tipos.
+- Ao adicionar um novo módulo com rotas protegidas, importe `IdentityModule` + `AuthModule` (o guard `@Auth()` precisa resolvê-los no escopo do módulo do controller — seção 2.5).
+- Ao adicionar um novo evento de domínio, publique-o via `EventBus` (nunca chame outro módulo diretamente) e cadastre um template em `StaticMessageTemplateProvider` só se ele realmente precisar virar e-mail.
+- Ao adicionar uma nova rota de leitura frequente, avalie se ela deveria ser cacheada (`CachedUseCase`) e quais escritas precisam invalidar seu prefixo — ver seção 9.3 antes de esquecer uma invalidação.
