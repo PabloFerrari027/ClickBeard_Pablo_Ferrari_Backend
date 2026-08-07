@@ -83,6 +83,82 @@ export class EnvConfig {
   @Max(65535)
   private readonly REDIS_PORT: number = Number(process.env.REDIS_PORT);
 
+  @IsOptional()
+  @IsString()
+  private readonly REDIS_PASSWORD: string | undefined =
+    process.env.REDIS_PASSWORD || undefined;
+
+  @IsString()
+  @IsNotEmpty()
+  private readonly JWT_ACCESS_SECRET: string = process.env
+    .JWT_ACCESS_SECRET as string;
+
+  @IsString()
+  @IsNotEmpty()
+  private readonly JWT_ACCESS_EXPIRES_IN: string =
+    process.env.JWT_ACCESS_EXPIRES_IN ?? '15m';
+
+  @IsString()
+  @IsNotEmpty()
+  private readonly JWT_REFRESH_SECRET: string = process.env
+    .JWT_REFRESH_SECRET as string;
+
+  @IsString()
+  @IsNotEmpty()
+  private readonly JWT_REFRESH_EXPIRES_IN: string =
+    process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+
+  @IsInt()
+  @Min(4)
+  @Max(15)
+  private readonly BCRYPT_SALT_ROUNDS: number = Number(
+    process.env.BCRYPT_SALT_ROUNDS ?? 10,
+  );
+
+  @IsString()
+  @IsNotEmpty()
+  private readonly SMTP_HOST: string = process.env.SMTP_HOST as string;
+
+  @IsInt()
+  @Min(0)
+  @Max(65535)
+  private readonly SMTP_PORT: number = Number(process.env.SMTP_PORT ?? 587);
+
+  @IsOptional()
+  @IsString()
+  private readonly SMTP_USER: string | undefined =
+    process.env.SMTP_USER || undefined;
+
+  @IsOptional()
+  @IsString()
+  private readonly SMTP_PASSWORD: string | undefined =
+    process.env.SMTP_PASSWORD || undefined;
+
+  @IsString()
+  @IsNotEmpty()
+  private readonly SMTP_FROM: string = process.env.SMTP_FROM as string;
+
+  @IsOptional()
+  @IsBooleanString()
+  private readonly SMTP_SECURE: string = process.env.SMTP_SECURE ?? 'false';
+
+  /** Comma-separated list of allowed origins, or `*` to reflect any origin. */
+  @IsString()
+  @IsNotEmpty()
+  private readonly CORS_ORIGIN: string = process.env.CORS_ORIGIN ?? '*';
+
+  @IsInt()
+  @Min(1000)
+  private readonly THROTTLE_TTL_MS: number = Number(
+    process.env.THROTTLE_TTL_MS ?? 60_000,
+  );
+
+  @IsInt()
+  @Min(1)
+  private readonly THROTTLE_LIMIT: number = Number(
+    process.env.THROTTLE_LIMIT ?? 100,
+  );
+
   constructor() {
     const errors = validateSync(this);
 
@@ -153,5 +229,68 @@ export class EnvConfig {
 
   get redisPort(): number {
     return this.REDIS_PORT;
+  }
+
+  get redisPassword(): string | undefined {
+    return this.REDIS_PASSWORD;
+  }
+
+  get jwtAccessSecret(): string {
+    return this.JWT_ACCESS_SECRET;
+  }
+
+  get jwtAccessExpiresIn(): string {
+    return this.JWT_ACCESS_EXPIRES_IN;
+  }
+
+  get jwtRefreshSecret(): string {
+    return this.JWT_REFRESH_SECRET;
+  }
+
+  get jwtRefreshExpiresIn(): string {
+    return this.JWT_REFRESH_EXPIRES_IN;
+  }
+
+  get bcryptSaltRounds(): number {
+    return this.BCRYPT_SALT_ROUNDS;
+  }
+
+  get smtpHost(): string {
+    return this.SMTP_HOST;
+  }
+
+  get smtpPort(): number {
+    return this.SMTP_PORT;
+  }
+
+  get smtpUser(): string | undefined {
+    return this.SMTP_USER;
+  }
+
+  get smtpPassword(): string | undefined {
+    return this.SMTP_PASSWORD;
+  }
+
+  get smtpFrom(): string {
+    return this.SMTP_FROM;
+  }
+
+  get smtpSecure(): boolean {
+    return this.SMTP_SECURE === 'true';
+  }
+
+  /** `true` (reflect any origin) when `CORS_ORIGIN=*`, else the parsed allow-list. */
+  get corsOrigins(): true | string[] {
+    return this.CORS_ORIGIN === '*'
+      ? true
+      : this.CORS_ORIGIN.split(',').map((origin) => origin.trim());
+  }
+
+  get throttleTtlMs(): number {
+    return this.THROTTLE_TTL_MS;
+  }
+
+  get throttleLimit(): number {
+    return this.THROTTLE_LIMIT;
   }
 }
