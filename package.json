@@ -34,7 +34,7 @@
     "db:down": "docker compose -f docker-compose.yml --env-file .env stop postgres redis",
     "db:restart": "docker compose -f docker-compose.yml --env-file .env restart postgres redis",
     "db:logs": "docker compose -f docker-compose.yml --env-file .env logs -f postgres redis",
-    "db:reset": "docker compose -f docker-compose.yml --env-file .env down -v && docker compose -f docker/docker-compose.yml --env-file .env up -d postgres redis",
+    "db:reset": "docker compose -f docker-compose.yml --env-file .env down -v && docker compose -f docker-compose.yml --env-file .env up -d postgres redis",
     "redis:flush": "docker exec redis redis-cli FLUSHALL",
     "migration:generate": "sequelize-cli migration:generate --name",
     "migration:up": "sequelize-cli db:migrate",
