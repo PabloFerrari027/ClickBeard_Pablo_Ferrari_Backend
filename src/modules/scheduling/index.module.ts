@@ -7,12 +7,14 @@ import { BARBER_DIRECTORY } from './core/application/ports/barber-directory.port
 import { TRANSACTION_MANAGER } from './core/application/ports/transaction-manager.port';
 import { CancelAppointmentByAdminUseCase } from './core/application/use-cases/cancel-appointment-by-admin.use-case';
 import { CancelAppointmentUseCase } from './core/application/use-cases/cancel-appointment.use-case';
+import { CancelAppointmentsForBarberUnavailabilityUseCase } from './core/application/use-cases/cancel-appointments-for-barber-unavailability.use-case';
 import { CreateAppointmentUseCase } from './core/application/use-cases/create-appointment.use-case';
 import { GetAppointmentUseCase } from './core/application/use-cases/get-appointment.use-case';
 import { ListAvailableTimeSlotsUseCase } from './core/application/use-cases/list-available-time-slots.use-case';
 import { ListCustomerAppointmentsUseCase } from './core/application/use-cases/list-customer-appointments.use-case';
 import { ListFutureAppointmentsUseCase } from './core/application/use-cases/list-future-appointments.use-case';
 import { ListTodayAppointmentsUseCase } from './core/application/use-cases/list-today-appointments.use-case';
+import { BarberUnavailabilityCreatedConsumer } from './infrastructure/messaging/barber-unavailability-created.consumer';
 import { AppointmentModel } from './infrastructure/persistence/models/appointment.model';
 import { SequelizeAppointmentRepository } from './infrastructure/persistence/repositories/sequelize-appointment.repository';
 import { SequelizeAvailabilityService } from './infrastructure/persistence/services/sequelize-availability.service';
@@ -311,6 +313,21 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         CACHE_POLICY,
       ],
     },
+    {
+      provide: CancelAppointmentsForBarberUnavailabilityUseCase,
+      useFactory: (
+        appointmentRepository: AppointmentRepository,
+        userRepository: UserRepository,
+        eventBus: EventBus,
+      ) =>
+        new CancelAppointmentsForBarberUnavailabilityUseCase(
+          appointmentRepository,
+          userRepository,
+          eventBus,
+        ),
+      inject: [APPOINTMENT_REPOSITORY, USER_REPOSITORY, EVENT_BUS],
+    },
+    BarberUnavailabilityCreatedConsumer,
   ],
 })
 export class SchedulingModule {}
