@@ -108,6 +108,78 @@ jobs:
       - name: Re-apply (leaves the schema in the up state, matching a real deploy)
         run: npm run migration:up
 
+  e2e:
+    name: End-to-end tests
+    needs: [test, migrations]
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: clickbeard_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: 3000
+      JWT_ACCESS_SECRET: ci-access-secret
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BCRYPT_SALT_ROUNDS: "4"
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      SMTP_FROM: "ClickBeard <ci@clickbeard.local>"
+      SMTP_SECURE: "false"
+      CORS_ORIGIN: "*"
+      THROTTLE_TTL_MS: "60000"
+      THROTTLE_LIMIT: "1000"
+      SEED_ADMIN_NAME: "Admin"
+      SEED_ADMIN_EMAIL: "admin@clickbeard.local"
+      SEED_ADMIN_PASSWORD: "ci-admin-password"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migrations
+        run: npm run migration:up
+
+      # e2e tests exercise admin-gated routes as the seeded bootstrap
+      # admin (see database/seeders/) since ADMIN accounts can only be
+      # created/promoted by an existing admin.
+      - name: Seed the bootstrap admin
+        run: npm run seed:up
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
   docker:
     name: Docker image builds
     runs-on: ubuntu-latest

@@ -1,0 +1,244 @@
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+
+import { UserRole } from '../src/modules/identity/core/domain/enums/user-role.enum';
+import {
+  authHeader,
+  getAdminSession,
+  registerAndLogin,
+  registerUser,
+  Session,
+  uniqueEmail,
+} from './support/api.helpers';
+import { NotificationSenderSpy } from './support/notification-sender.spy';
+import { createTestApp } from './support/test-app';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+describe('Appointments (e2e)', () => {
+  let app: INestApplication;
+  let notifications: NotificationSenderSpy;
+  let admin: Session;
+  let barberId: string;
+  let qualificationId: string;
+
+  beforeAll(async () => {
+    ({ app, notifications } = await createTestApp());
+    admin = await getAdminSession(app, notifications);
+
+    const qualification = await request(app.getHttpServer())
+      .post('/qualifications')
+      .set(authHeader(admin.accessToken))
+      .send({ name: `Appointments Suite Qualification ${uniqueEmail('q')}` });
+    qualificationId = qualification.body.id as string;
+
+    const barberUser = await registerUser(app, { role: UserRole.BARBER });
+    const barber = await request(app.getHttpServer())
+      .post('/barbers')
+      .set(authHeader(admin.accessToken))
+      .send({
+        userId: barberUser.id,
+        age: 30,
+        hiredAt: '2025-01-01T00:00:00.000Z',
+        qualificationIds: [qualificationId],
+      });
+    barberId = barber.body.id as string;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  /**
+   * TimeSlot generation is business-hours-aware and rounds calendar days
+   * using the server's local timezone, which this suite cannot assume —
+   * so instead of computing a date and hoping it has open slots, it asks
+   * the real server across the next few days and books whatever it
+   * actually reports as available. Availability itself only filters out
+   * past slots, not `CreateAppointmentUseCase`'s separate 2-hour minimum
+   * booking notice (`MIN_APPOINTMENT_NOTICE_MS`), so this also skips
+   * anything closer than that.
+   */
+  async function findBookableSlot(token: string): Promise<string> {
+    const now = Date.now();
+    const minNoticeMs = 3 * 60 * 60 * 1000;
+
+    for (let offsetDays = 0; offsetDays < 3; offsetDays += 1) {
+      const dateParam = new Date(now + offsetDays * ONE_DAY_MS)
+        .toISOString()
+        .slice(0, 10);
+
+      const response = await request(app.getHttpServer())
+        .get('/appointments/time-slots')
+        .set(authHeader(token))
+        .query({ barberId, qualificationId, date: dateParam });
+
+      const slots = (response.body.timeSlots ?? []) as Array<{
+        startAt: string;
+      }>;
+      const bookable = slots.find(
+        (slot) => new Date(slot.startAt).getTime() - now >= minNoticeMs,
+      );
+
+      if (bookable) {
+        return bookable.startAt;
+      }
+    }
+
+    throw new Error(
+      'No bookable time slot found for the test barber in the next 3 days',
+    );
+  }
+
+  describe('GET /appointments/time-slots', () => {
+    it('rejects an unauthenticated request with 401', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/appointments/time-slots')
+        .query({
+          barberId,
+          qualificationId,
+          date: new Date().toISOString().slice(0, 10),
+        });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('lists available slots for an authenticated user', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+
+      const response = await request(app.getHttpServer())
+        .get('/appointments/time-slots')
+        .set(authHeader(session.accessToken))
+        .query({
+          barberId,
+          qualificationId,
+          date: new Date().toISOString().slice(0, 10),
+        });
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.timeSlots)).toBe(true);
+    });
+  });
+
+  describe('POST /appointments', () => {
+    it('rejects an unauthenticated request with 401', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/appointments')
+        .send({ barberId, qualificationId, startAt: new Date().toISOString() });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('books an appointment for the current user', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+      const startAt = await findBookableSlot(session.accessToken);
+
+      const response = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(session.accessToken))
+        .send({ barberId, qualificationId, startAt });
+
+      expect(response.status).toBe(201);
+      expect(response.body.barberId).toBe(barberId);
+      expect(response.body.status).toBe('SCHEDULED');
+    });
+  });
+
+  describe('GET /appointments/me, /appointments/:id and cancellation', () => {
+    it('lets the owner see and cancel their own appointment, denies others', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+      const appointmentId = created.body.id as string;
+
+      const mine = await request(app.getHttpServer())
+        .get('/appointments/me')
+        .set(authHeader(ownerSession.accessToken));
+      expect(mine.status).toBe(200);
+      expect(mine.body.appointments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: appointmentId }),
+        ]),
+      );
+
+      const getById = await request(app.getHttpServer())
+        .get(`/appointments/${appointmentId}`)
+        .set(authHeader(ownerSession.accessToken));
+      expect(getById.status).toBe(200);
+
+      const { session: strangerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const strangerGetById = await request(app.getHttpServer())
+        .get(`/appointments/${appointmentId}`)
+        .set(authHeader(strangerSession.accessToken));
+      expect(strangerGetById.status).toBe(403);
+
+      const strangerCancel = await request(app.getHttpServer())
+        .delete(`/appointments/${appointmentId}`)
+        .set(authHeader(strangerSession.accessToken));
+      expect(strangerCancel.status).toBe(403);
+
+      const cancel = await request(app.getHttpServer())
+        .delete(`/appointments/${appointmentId}`)
+        .set(authHeader(ownerSession.accessToken));
+      expect(cancel.status).toBe(200);
+      expect(cancel.body.status).toBe('CANCELLED');
+    });
+  });
+
+  describe('Admin-only listings', () => {
+    it('rejects a non-admin with 403 on /today and /future', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+
+      const today = await request(app.getHttpServer())
+        .get('/appointments/today')
+        .set(authHeader(session.accessToken));
+      expect(today.status).toBe(403);
+
+      const future = await request(app.getHttpServer())
+        .get('/appointments/future')
+        .set(authHeader(session.accessToken));
+      expect(future.status).toBe(403);
+    });
+
+    it('lets an admin list today and future appointments, including a freshly booked one in /future', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const todayResponse = await request(app.getHttpServer())
+        .get('/appointments/today')
+        .set(authHeader(admin.accessToken));
+      expect(todayResponse.status).toBe(200);
+      expect(Array.isArray(todayResponse.body.appointments)).toBe(true);
+
+      const futureResponse = await request(app.getHttpServer())
+        .get('/appointments/future')
+        .set(authHeader(admin.accessToken));
+      expect(futureResponse.status).toBe(200);
+      expect(futureResponse.body.appointments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: created.body.id }),
+        ]),
+      );
+    });
+  });
+});
