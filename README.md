@@ -2,8 +2,6 @@
 
 Backend de agendamento para barbearias, construído em **NestJS + TypeScript**, com **Arquitetura Hexagonal (Ports & Adapters)** e **Domain-Driven Design**. Este README é a documentação técnica de referência do projeto: reflete exatamente o que está implementado no código nesta branch, sem funcionalidades hipotéticas.
 
-> **Nota de sessão**: as seções sobre cancelamento administrativo de agendamentos (com motivo) e indisponibilidade de barbeiros descrevem o design já aprovado para implementação nesta sessão de trabalho. Elas foram escritas antes do código correspondente para servir de especificação; a implementação segue exatamente o que está descrito aqui. Remova esta nota quando o código estiver implementado e verificado.
-
 ## Índice
 
 1. [Visão Geral](#1-visão-geral)
@@ -905,13 +903,13 @@ Toda regra de negócio violada lança uma subclasse de uma das 5 categorias base
 
 | Categoria base | Status HTTP | Qtde de subclasses no projeto | Exemplos |
 |---|---|---|---|
-| `NotFoundError` | 404 | 9 | `BarberNotFoundError`, `QualificationNotFoundError`, `AppointmentNotFoundError`, `VerificationCodeNotFoundError`, `BarberUnavailabilityNotFoundError` |
+| `NotFoundError` | 404 | 11 | `BarberNotFoundError`, `QualificationNotFoundError`, `AppointmentNotFoundError`, `VerificationCodeNotFoundError`, `BarberUnavailabilityNotFoundError` |
 | `ConflictError` | 409 | 13 | `UserAlreadyExistsError`, `BarberTimeSlotConflictError`, `QualificationInUseError`, `AppointmentAlreadyCancelledError`, `BarberUnavailableError`, `BarberUnavailabilityOverlapError` |
-| `UnauthorizedError` | 401 | 4 | `InvalidCredentialsError`, `InvalidRefreshTokenError`, `RefreshTokenExpiredError` |
+| `UnauthorizedError` | 401 | 5 | `InvalidCredentialsError` (×2, `auth` e `identity`), `InvalidRefreshTokenError`, `RefreshTokenExpiredError`, `RefreshTokenAlreadyRevokedError` |
 | `ForbiddenError` | 403 | 6 | `UserIsNotAdminError` (×5, um por módulo que reimplementa a policy), `AppointmentAccessDeniedError` |
-| `ValidationError` | 400 | ~28 | `WeakPasswordError`, `InvalidTimeSlotError`, `AppointmentTooSoonError`, `InvalidVerificationCodeError`, `CancellationWindowExpiredError`, `CancellationReasonRequiredError`, `InvalidUnavailabilityPeriodError`, `UnavailabilityReasonRequiredError` |
+| `ValidationError` | 400 | 26 | `WeakPasswordError`, `InvalidTimeSlotError`, `AppointmentTooSoonError`, `InvalidVerificationCodeError`, `CancellationWindowExpiredError`, `CancellationReasonRequiredError`, `InvalidUnavailabilityPeriodError`, `UnavailabilityReasonRequiredError` |
 
-*(Contagens desta tabela serão reconferidas por grep após a implementação das duas features em andamento — ver seção 18 se algo ficar defasado.)*
+Total: 61 subclasses de `DomainError` (contagem exata via grep, confirmada após a implementação de cancelamento administrativo e indisponibilidade de barbeiros).
 
 `PersistenceError` (erros de infraestrutura de banco) e `MessageQueueUnavailableError` **deliberadamente não** estendem `DomainError` — continuam caindo no filtro default do Nest e retornando 500, porque uma falha de infraestrutura não é uma regra de negócio violada (ver seção 13).
 
@@ -1100,7 +1098,7 @@ Não implementado — não há correlação de request id nem tracing distribuí
 |---|---|---|---|---|
 | 1 | Como impedir double-booking sob concorrência? | Lock otimista na aplicação; lock pessimista via `SELECT FOR UPDATE`; constraint no banco | Índice único parcial (`WHERE status = 'SCHEDULED'`) + checagem na Application dentro de uma transação | O banco é a única fonte de verdade que não pode ser burlada por uma corrida entre duas requisições simultâneas; a checagem na Application ainda existe para dar um erro de domínio legível (`BarberTimeSlotConflictError`) em vez de estourar a constraint como 500 |
 | 2 | Como propagar um evento para múltiplos assinantes independentes com BullMQ (que é competing-consumer)? | Uma fila única compartilhada (assinantes disputariam jobs entre si) | Uma fila nomeada por assinante (`DOMAIN_EVENTS_CHANNELS`), com o publisher (`QueueEventBus`) escrevendo em todas | Cada assinante precisa ver **todo** evento relevante, não uma fração dividida com os outros — fan-out explícito resolve isso sem introduzir um broker pub/sub adicional |
-| 3 | Como mapear ~55 erros de domínio para status HTTP sem cada um saber sobre HTTP? | Cada `DomainError` carregar seu próprio `httpStatus`; um filtro por classe concreta | 5 classes-base por categoria semântica (`NotFoundError`/`ConflictError`/`UnauthorizedError`/`ForbiddenError`/`ValidationError`), um filtro global que faz `instanceof` | Domain não deveria saber o que é HTTP; categorizar por semântica (não por classe individual) also documenta a intenção de cada erro no próprio nome da classe-base que ele estende |
+| 3 | Como mapear 61 erros de domínio para status HTTP sem cada um saber sobre HTTP? | Cada `DomainError` carregar seu próprio `httpStatus`; um filtro por classe concreta | 5 classes-base por categoria semântica (`NotFoundError`/`ConflictError`/`UnauthorizedError`/`ForbiddenError`/`ValidationError`), um filtro global que faz `instanceof` | Domain não deveria saber o que é HTTP; categorizar por semântica (não por classe individual) also documenta a intenção de cada erro no próprio nome da classe-base que ele estende |
 | 4 | Quem pode criar o primeiro `ADMIN`, se criar um `ADMIN` exige um `ADMIN` existente? | Rota pública de bootstrap protegida por uma chave secreta; flag de ambiente que auto-promove o primeiro usuário cadastrado | Seeder idempotente (`database/seeders/`), fora do runtime da aplicação | Uma rota HTTP de bootstrap é superfície de ataque permanente mesmo que "desligável"; um seeder só roda uma vez, sob controle de quem tem acesso ao deploy, e nunca fica exposto depois |
 | 5 | Onde barbeiro deveria ter um id próprio ou reusar o do `User`? | Um `barbers.id` novo (UUID independente) + FK para `users.id` | `barbers.id = users.id` (mesma PK) | Barbeiro é um papel que um usuário assume, não uma segunda identidade — evita ter dois ids para a mesma pessoa e simplifica toda query que precisa juntar as duas tabelas |
 | 6 | Cache deveria falhar aberto ou fechado quando o Redis cai? | Propagar o erro (fail-closed) — mais "correto" em teoria | Fail-open: todo método de `RedisCacheManager` engole a exceção e degrada para no-op | Cache é estritamente uma otimização; deixá-lo derrubar o caminho de leitura/escrita principal transformaria uma falha secundária (Redis) num incidente de disponibilidade total, o pior cenário possível para algo que existe só para ser rápido |
