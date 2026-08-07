@@ -22,7 +22,6 @@ Backend de agendamento para barbearias, construído em **NestJS + TypeScript**, 
 16. [Observabilidade](#16-observabilidade)
 17. [Decisões Arquiteturais](#17-decisões-arquiteturais)
 18. [Possíveis Melhorias Futuras](#18-possíveis-melhorias-futuras)
-19. [Contribuição](#19-contribuição)
 
 ---
 
@@ -1044,39 +1043,3 @@ Não implementado — não há correlação de request id nem tracing distribuí
 - **Endpoint `/metrics`** no formato Prometheus para observabilidade de infraestrutura (latência, taxa de erro, throughput), separado das métricas de negócio já existentes em `analytics`.
 - **Consumidor de `AppointmentCreated`/`AppointmentCancelled`**, hoje publicados sem nenhum assinante — candidatos naturais para uma futura notificação ao barbeiro ou um contador incremental de ocupação.
 - **Teste e2e de rate limiting** e de degradação real (derrubar o container do Postgres/Redis durante a suíte), hoje cobertos só por unit test da lógica de tradução de erro.
-- **Corrigir `db:reset`** em `package.json`, que referencia `docker/docker-compose.yml` (caminho inexistente) em vez de `docker-compose.yml` na raiz.
-
----
-
-## 19. Contribuição
-
-### Padrões de código
-
-- Sem comentários explicando *o quê* — nomes de classe/método/variável devem ser autoexplicativos. Comentário só quando explica o *porquê* (uma decisão não-óbvia, um trade-off, uma invariante escondida) — é o padrão já seguido em todo o código existente, visível nos doc comments acima de classes-chave.
-- Toda regra de negócio nova vive em `core/domain` (entidade ou value object) ou `core/application` (use case/policy) — nunca em um controller ou DTO.
-- Antes de duplicar uma policy/helper entre módulos, verifique `shared/application/` — `ensureRequesterIsAdmin` e `pagination.ts` já existem para não serem reimplementados por módulo novo.
-- Todo Port novo (`core/application/ports/`) precisa de pelo menos uma implementação real em `infrastructure/` antes de ser mergeado — não deixar contratos órfãos (foi o motivo da remoção do `Clock` e do `AnalyticsRepository`, seção 17).
-
-### Fluxo de Git
-
-- Commits seguem **Conventional Commits** (`npm run commit`, via `commitizen`/`cz-conventional-changelog`): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, etc.
-- Um commit por artefato coeso (uma entidade, um value object, um use case) em vez de commits grandes bundlando mudanças não relacionadas.
-- Nunca `--no-verify`/`--no-gpg-sign` para pular hooks sem justificativa explícita.
-
-### Antes de abrir um PR
-
-```bash
-npx eslint "{src,test}/**/*.ts"   # lint
-npm run build                      # garante que dist/main.js é emitido
-npm test                           # unitários
-npm run test:e2e                   # e2e (requer Postgres/Redis + seed:up)
-```
-
-O CI (`.github/workflows/ci.yml`) roda exatamente essas etapas, mais a reversão completa das migrations e o build da imagem Docker de produção — um PR só deveria ser aberto depois que os quatro jobs passam localmente.
-
-### Boas práticas específicas deste projeto
-
-- Nunca importe uma classe concreta de `infrastructure`/`presentation` de dentro de `core/` — só interfaces (`ports`) e tipos.
-- Ao adicionar um novo módulo com rotas protegidas, importe `IdentityModule` + `AuthModule` (o guard `@Auth()` precisa resolvê-los no escopo do módulo do controller — seção 2.5).
-- Ao adicionar um novo evento de domínio, publique-o via `EventBus` (nunca chame outro módulo diretamente) e cadastre um template em `StaticMessageTemplateProvider` só se ele realmente precisar virar e-mail.
-- Ao adicionar uma nova rota de leitura frequente, avalie se ela deveria ser cacheada (`CachedUseCase`) e quais escritas precisam invalidar seu prefixo — ver seção 9.3 antes de esquecer uma invalidação.
