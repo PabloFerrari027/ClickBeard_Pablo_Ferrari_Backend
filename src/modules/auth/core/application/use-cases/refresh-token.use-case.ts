@@ -71,8 +71,10 @@ export class RefreshTokenUseCase implements UseCase<
 
     storedToken.revoke(rotatedToken.getId());
 
-    await this.refreshTokenRepository.save(storedToken);
+    // The rotated token must exist before the old one can reference it
+    // via replaced_by_token_id (a foreign key onto this same table).
     await this.refreshTokenRepository.save(rotatedToken);
+    await this.refreshTokenRepository.save(storedToken);
 
     return {
       accessToken: newAccessToken.token,
