@@ -4,10 +4,12 @@ import {
 } from '../dtos/list-customer-appointments.dto';
 import { toAppointmentDto } from '../mappers/appointment.mapper';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
+import {
+  computeTotalPages,
+  DEFAULT_LIMIT,
+  resolvePage,
+} from '../../../../../shared/application/pagination';
 import { UseCase } from '../../../../../shared/application/use-case';
-
-const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 100;
 
 export class ListCustomerAppointmentsUseCase implements UseCase<
   ListCustomerAppointmentsInputDto,
@@ -18,7 +20,7 @@ export class ListCustomerAppointmentsUseCase implements UseCase<
   async execute(
     input: ListCustomerAppointmentsInputDto,
   ): Promise<ListCustomerAppointmentsOutputDto> {
-    const page = input.page && input.page > 0 ? input.page : DEFAULT_PAGE;
+    const page = resolvePage(input.page);
 
     const { appointments, total } =
       await this.appointmentRepository.findByCustomerId(
@@ -30,7 +32,7 @@ export class ListCustomerAppointmentsUseCase implements UseCase<
     return {
       appointments: appointments.map(toAppointmentDto),
       page,
-      totalPages: Math.ceil(total / DEFAULT_LIMIT),
+      totalPages: computeTotalPages(total),
     };
   }
 }
