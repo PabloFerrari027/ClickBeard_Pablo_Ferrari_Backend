@@ -41,6 +41,21 @@ describe('CacheKeyGenerator', () => {
     ).toBe('appointments:customer-1:');
   });
 
+  it('builds today/future appointments keys, not scoped by requester', () => {
+    expect(CacheKeyGenerator.todayAppointments(1).toString()).toBe(
+      'appointments:today:1',
+    );
+    expect(CacheKeyGenerator.todayAppointmentsPrefix().toString()).toBe(
+      'appointments:today:',
+    );
+    expect(CacheKeyGenerator.futureAppointments(2).toString()).toBe(
+      'appointments:future:2',
+    );
+    expect(CacheKeyGenerator.futureAppointmentsPrefix().toString()).toBe(
+      'appointments:future:',
+    );
+  });
+
   it('formats available time slots keys with a date-only segment', () => {
     const date = new Date('2026-08-06T15:30:00.000Z');
 

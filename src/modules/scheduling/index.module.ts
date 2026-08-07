@@ -20,6 +20,7 @@ import { SequelizeTransactionManager } from './infrastructure/persistence/servic
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { IdentityModule } from '../identity/index.module';
+import { AuthModule } from '../auth/index.module';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
 import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
@@ -27,7 +28,6 @@ import { CacheResource } from '../../shared/application/cache/cache-resource.enu
 import { CACHE_INVALIDATION_SERVICE } from '../../shared/application/ports/cache-invalidation-service.port';
 import { CACHE_MANAGER } from '../../shared/application/ports/cache-manager.port';
 import { CACHE_POLICY } from '../../shared/application/ports/cache-policy.port';
-import { CLOCK } from '../../shared/application/ports/clock.port';
 import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
 
 import type { AppointmentRepository } from './core/application/ports/appointment-repository.port';
@@ -38,11 +38,14 @@ import type { UserRepository } from '../identity/core/application/ports/user-rep
 import type { CacheInvalidationService } from '../../shared/application/ports/cache-invalidation-service.port';
 import type { CacheManager } from '../../shared/application/ports/cache-manager.port';
 import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
-import type { Clock } from '../../shared/application/ports/clock.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
 @Module({
-  imports: [IdentityModule, SequelizeModule.forFeature([AppointmentModel])],
+  imports: [
+    IdentityModule,
+    AuthModule,
+    SequelizeModule.forFeature([AppointmentModel]),
+  ],
   controllers: [AppointmentsController],
   providers: [
     {
@@ -60,7 +63,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         userRepository: UserRepository,
         barberDirectory: BarberDirectory,
         transactionManager: TransactionManager,
-        clock: Clock,
         eventBus: EventBus,
         cacheInvalidationService: CacheInvalidationService,
       ) =>
@@ -71,7 +73,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
             userRepository,
             barberDirectory,
             transactionManager,
-            clock,
             eventBus,
           ),
           cacheInvalidationService,
@@ -84,6 +85,8 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
               CacheKeyGenerator.customerAppointmentsPrefix(
                 output.appointment.customerId,
               ),
+              CacheKeyGenerator.todayAppointmentsPrefix(),
+              CacheKeyGenerator.futureAppointmentsPrefix(),
             ],
           },
         ),
@@ -93,7 +96,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         USER_REPOSITORY,
         BARBER_DIRECTORY,
         TRANSACTION_MANAGER,
-        CLOCK,
         EVENT_BUS,
         CACHE_INVALIDATION_SERVICE,
       ],
@@ -102,12 +104,11 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       provide: CancelAppointmentUseCase,
       useFactory: (
         appointmentRepository: AppointmentRepository,
-        clock: Clock,
         eventBus: EventBus,
         cacheInvalidationService: CacheInvalidationService,
       ) =>
         new CacheInvalidatingUseCase(
-          new CancelAppointmentUseCase(appointmentRepository, clock, eventBus),
+          new CancelAppointmentUseCase(appointmentRepository, eventBus),
           cacheInvalidationService,
           {
             buildPrefixes: (_input, output) => [
@@ -119,15 +120,12 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
               CacheKeyGenerator.customerAppointmentsPrefix(
                 output.appointment.customerId,
               ),
+              CacheKeyGenerator.todayAppointmentsPrefix(),
+              CacheKeyGenerator.futureAppointmentsPrefix(),
             ],
           },
         ),
-      inject: [
-        APPOINTMENT_REPOSITORY,
-        CLOCK,
-        EVENT_BUS,
-        CACHE_INVALIDATION_SERVICE,
-      ],
+      inject: [APPOINTMENT_REPOSITORY, EVENT_BUS, CACHE_INVALIDATION_SERVICE],
     },
     {
       provide: GetAppointmentUseCase,
@@ -188,35 +186,64 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       useFactory: (
         appointmentRepository: AppointmentRepository,
         userRepository: UserRepository,
-        clock: Clock,
+        cacheManager: CacheManager,
+        cachePolicy: CachePolicy,
       ) =>
-        new ListTodayAppointmentsUseCase(
-          appointmentRepository,
-          userRepository,
-          clock,
+        new CachedUseCase(
+          new ListTodayAppointmentsUseCase(
+            appointmentRepository,
+            userRepository,
+          ),
+          cacheManager,
+          cachePolicy,
+          {
+            resource: CacheResource.TODAY_APPOINTMENTS,
+            // Mirrors ListTodayAppointmentsUseCase's own DEFAULT_PAGE.
+            buildKey: (input) =>
+              CacheKeyGenerator.todayAppointments(input.page ?? 1),
+          },
         ),
-      inject: [APPOINTMENT_REPOSITORY, USER_REPOSITORY, CLOCK],
+      inject: [
+        APPOINTMENT_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_MANAGER,
+        CACHE_POLICY,
+      ],
     },
     {
       provide: ListFutureAppointmentsUseCase,
       useFactory: (
         appointmentRepository: AppointmentRepository,
         userRepository: UserRepository,
-        clock: Clock,
+        cacheManager: CacheManager,
+        cachePolicy: CachePolicy,
       ) =>
-        new ListFutureAppointmentsUseCase(
-          appointmentRepository,
-          userRepository,
-          clock,
+        new CachedUseCase(
+          new ListFutureAppointmentsUseCase(
+            appointmentRepository,
+            userRepository,
+          ),
+          cacheManager,
+          cachePolicy,
+          {
+            resource: CacheResource.FUTURE_APPOINTMENTS,
+            // Mirrors ListFutureAppointmentsUseCase's own DEFAULT_PAGE.
+            buildKey: (input) =>
+              CacheKeyGenerator.futureAppointments(input.page ?? 1),
+          },
         ),
-      inject: [APPOINTMENT_REPOSITORY, USER_REPOSITORY, CLOCK],
+      inject: [
+        APPOINTMENT_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_MANAGER,
+        CACHE_POLICY,
+      ],
     },
     {
       provide: ListAvailableTimeSlotsUseCase,
       useFactory: (
         barberDirectory: BarberDirectory,
         availabilityService: AvailabilityService,
-        clock: Clock,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
@@ -224,7 +251,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
           new ListAvailableTimeSlotsUseCase(
             barberDirectory,
             availabilityService,
-            clock,
           ),
           cacheManager,
           cachePolicy,
@@ -241,7 +267,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       inject: [
         BARBER_DIRECTORY,
         AVAILABILITY_SERVICE,
-        CLOCK,
         CACHE_MANAGER,
         CACHE_POLICY,
       ],
