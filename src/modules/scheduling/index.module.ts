@@ -5,6 +5,7 @@ import { APPOINTMENT_REPOSITORY } from './core/application/ports/appointment-rep
 import { AVAILABILITY_SERVICE } from './core/application/ports/availability-service.port';
 import { BARBER_DIRECTORY } from './core/application/ports/barber-directory.port';
 import { TRANSACTION_MANAGER } from './core/application/ports/transaction-manager.port';
+import { CancelAppointmentByAdminUseCase } from './core/application/use-cases/cancel-appointment-by-admin.use-case';
 import { CancelAppointmentUseCase } from './core/application/use-cases/cancel-appointment.use-case';
 import { CreateAppointmentUseCase } from './core/application/use-cases/create-appointment.use-case';
 import { GetAppointmentUseCase } from './core/application/use-cases/get-appointment.use-case';
@@ -126,6 +127,45 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
           },
         ),
       inject: [APPOINTMENT_REPOSITORY, EVENT_BUS, CACHE_INVALIDATION_SERVICE],
+    },
+    {
+      provide: CancelAppointmentByAdminUseCase,
+      useFactory: (
+        appointmentRepository: AppointmentRepository,
+        userRepository: UserRepository,
+        eventBus: EventBus,
+        cacheInvalidationService: CacheInvalidationService,
+      ) =>
+        new CacheInvalidatingUseCase(
+          new CancelAppointmentByAdminUseCase(
+            appointmentRepository,
+            userRepository,
+            eventBus,
+          ),
+          cacheInvalidationService,
+          {
+            // Same effect on cached data as CancelAppointmentUseCase — an
+            // appointment left SCHEDULED, whoever triggered it.
+            buildPrefixes: (_input, output) => [
+              CacheKeyGenerator.appointmentPrefix(output.appointment.id),
+              CacheKeyGenerator.barberTimeSlotsPrefix(
+                output.appointment.barberId,
+                output.appointment.startAt,
+              ),
+              CacheKeyGenerator.customerAppointmentsPrefix(
+                output.appointment.customerId,
+              ),
+              CacheKeyGenerator.todayAppointmentsPrefix(),
+              CacheKeyGenerator.futureAppointmentsPrefix(),
+            ],
+          },
+        ),
+      inject: [
+        APPOINTMENT_REPOSITORY,
+        USER_REPOSITORY,
+        EVENT_BUS,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: GetAppointmentUseCase,
