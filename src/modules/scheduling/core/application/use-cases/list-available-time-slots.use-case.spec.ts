@@ -21,6 +21,8 @@ describe('ListAvailableTimeSlotsUseCase', () => {
     availabilityService = {
       isBarberAvailable: jest.fn(),
       getBookedSlots: jest.fn(),
+      isBarberUnavailable: jest.fn(),
+      getUnavailableSlots: jest.fn(),
     };
     useCase = new ListAvailableTimeSlotsUseCase(
       barberDirectory,
@@ -32,6 +34,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
       qualificationIds: ['qualification-id'],
       active: true,
     });
+    availabilityService.getUnavailableSlots.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -52,6 +55,28 @@ describe('ListAvailableTimeSlotsUseCase', () => {
 
   it('excludes already booked slots', async () => {
     availabilityService.getBookedSlots.mockResolvedValue([
+      TimeSlot.create(new Date(2026, 0, 10, 9, 0, 0, 0)),
+    ]);
+
+    const result = await useCase.execute({
+      barberId: 'barber-id',
+      qualificationId: 'qualification-id',
+      date,
+    });
+
+    expect(result.timeSlots).toHaveLength(19);
+    expect(
+      result.timeSlots.some(
+        (slot) =>
+          slot.startAt.getTime() ===
+          new Date(2026, 0, 10, 9, 0, 0, 0).getTime(),
+      ),
+    ).toBe(false);
+  });
+
+  it('excludes slots blocked by a barber unavailability period', async () => {
+    availabilityService.getBookedSlots.mockResolvedValue([]);
+    availabilityService.getUnavailableSlots.mockResolvedValue([
       TimeSlot.create(new Date(2026, 0, 10, 9, 0, 0, 0)),
     ]);
 

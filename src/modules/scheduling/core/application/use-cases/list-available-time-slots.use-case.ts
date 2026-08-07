@@ -32,16 +32,17 @@ export class ListAvailableTimeSlotsUseCase implements UseCase<
       throw new BarberDoesNotHaveQualificationError();
     }
 
-    const bookedSlots = await this.availabilityService.getBookedSlots(
-      input.barberId,
-      input.date,
-    );
+    const [bookedSlots, unavailableSlots] = await Promise.all([
+      this.availabilityService.getBookedSlots(input.barberId, input.date),
+      this.availabilityService.getUnavailableSlots(input.barberId, input.date),
+    ]);
     const now = new Date();
 
     const availableSlots = TimeSlot.allForDate(input.date).filter(
       (slot) =>
         slot.getStart().getTime() >= now.getTime() &&
-        !bookedSlots.some((booked) => booked.equals(slot)),
+        !bookedSlots.some((booked) => booked.equals(slot)) &&
+        !unavailableSlots.some((unavailable) => unavailable.equals(slot)),
     );
 
     return { timeSlots: availableSlots.map(toTimeSlotDto) };
