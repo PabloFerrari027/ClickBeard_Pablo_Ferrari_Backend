@@ -88,6 +88,16 @@ export class CacheKeyGenerator {
     );
   }
 
+  /**
+   * Every date's slots for a barber, not just one day — used when a
+   * barber unavailability period is created/removed, since it can span
+   * multiple calendar days and there is no single `date` to scope the
+   * invalidation to the way `barberTimeSlotsPrefix` does.
+   */
+  static barberAllTimeSlotsPrefix(barberId: string): CacheKeyPrefix {
+    return CacheKeyPrefix.of(`time-slots:${barberId}:`);
+  }
+
   static dashboardMetrics(period: string): CacheKey {
     return CacheKey.of(`dashboard:${period}`);
   }
