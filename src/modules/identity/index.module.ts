@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 
 import { PASSWORD_HASHER } from './core/application/ports/password-hasher.port';
+import { AuthModule } from '../auth/index.module';
 import { USER_REPOSITORY } from './core/application/ports/user-repository.port';
 import { ActivateUserUseCase } from './core/application/use-cases/activate-user.use-case';
 import { AuthenticateUserUseCase } from './core/application/use-cases/authenticate-user.use-case';
@@ -12,6 +13,7 @@ import { GetUserProfileUseCase } from './core/application/use-cases/get-user-pro
 import { RegisterUserUseCase } from './core/application/use-cases/register-user.use-case';
 import { UserModel } from './infrastructure/persistence/models/user.model';
 import { SequelizeUserRepository } from './infrastructure/persistence/repositories/sequelize-user.repository';
+import { BcryptPasswordHasher } from './infrastructure/security/bcrypt-password-hasher';
 import { UsersController } from './presentation/controllers/users.controller';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
@@ -29,11 +31,21 @@ import type { CacheManager } from '../../shared/application/ports/cache-manager.
 import type { CachePolicy } from '../../shared/application/ports/cache-policy.port';
 import type { EventBus } from '../../shared/application/ports/event-bus.port';
 
+/**
+ * Imports `AuthModule` (via `forwardRef`, since `AuthModule` imports
+ * this module back for `USER_REPOSITORY`/`PASSWORD_HASHER`) purely so
+ * `UsersController`'s `@Auth()` guard can resolve `TOKEN_PROVIDER` —
+ * Identity's own use cases never depend on Auth.
+ */
 @Module({
-  imports: [SequelizeModule.forFeature([UserModel])],
+  imports: [
+    SequelizeModule.forFeature([UserModel]),
+    forwardRef(() => AuthModule),
+  ],
   controllers: [UsersController],
   providers: [
     { provide: USER_REPOSITORY, useClass: SequelizeUserRepository },
+    { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     {
       provide: RegisterUserUseCase,
       useFactory: (
@@ -137,6 +149,6 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
     },
   ],
-  exports: [USER_REPOSITORY],
+  exports: [USER_REPOSITORY, PASSWORD_HASHER],
 })
 export class IdentityModule {}
