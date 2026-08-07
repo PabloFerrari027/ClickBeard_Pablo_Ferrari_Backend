@@ -335,4 +335,75 @@ describe('Appointments (e2e)', () => {
       expect(alreadyCancelled.status).toBe(409);
     });
   });
+
+  describe('Booking during a barber unavailability period', () => {
+    let unavailableBarberId: string;
+
+    beforeAll(async () => {
+      const barberUser = await registerUser(app, { role: UserRole.BARBER });
+      const barber = await request(app.getHttpServer())
+        .post('/barbers')
+        .set(authHeader(admin.accessToken))
+        .send({
+          userId: barberUser.id,
+          age: 30,
+          hiredAt: '2025-01-01T00:00:00.000Z',
+          qualificationIds: [qualificationId],
+        });
+      unavailableBarberId = barber.body.id as string;
+
+      // Cover a wide future window so the fixed 08:00-18:00 grid this
+      // barber would otherwise expose is entirely blocked, regardless of
+      // which day the test environment's clock falls on.
+      await request(app.getHttpServer())
+        .post(`/barbers/${unavailableBarberId}/unavailabilities`)
+        .set(authHeader(admin.accessToken))
+        .send({
+          startAt: new Date(Date.now()).toISOString(),
+          endAt: new Date(Date.now() + 30 * ONE_DAY_MS).toISOString(),
+          reason: 'Extended sick leave',
+        })
+        .expect(201);
+    });
+
+    it('excludes every slot from the time-slots listing', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+      const dateParam = new Date().toISOString().slice(0, 10);
+
+      const response = await request(app.getHttpServer())
+        .get('/appointments/time-slots')
+        .set(authHeader(session.accessToken))
+        .query({
+          barberId: unavailableBarberId,
+          qualificationId,
+          date: dateParam,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.timeSlots).toEqual([]);
+    });
+
+    it('rejects booking with 409 BarberUnavailableError', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+
+      // Tomorrow at 09:00 local time: always grid-aligned (top of the
+      // hour), within business hours, and well past the 2h minimum
+      // notice — so this fails on unavailability, not slot alignment.
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+
+      const response = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(session.accessToken))
+        .send({
+          barberId: unavailableBarberId,
+          qualificationId,
+          startAt: tomorrow.toISOString(),
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe('BarberUnavailableError');
+    });
+  });
 });
