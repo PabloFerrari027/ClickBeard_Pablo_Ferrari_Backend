@@ -13,6 +13,7 @@ import { SequelizeQualificationRepository } from './infrastructure/persistence/r
 import { QualificationsController } from './presentation/controllers/qualifications.controller';
 import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { IdentityModule } from '../identity/index.module';
+import { AuthModule } from '../auth/index.module';
 import { CacheInvalidatingUseCase } from '../../shared/application/cache/cache-invalidating-use-case';
 import { CacheKeyGenerator } from '../../shared/application/cache/cache-key-generator';
 import { CachedUseCase } from '../../shared/application/cache/cached-use-case';
@@ -31,6 +32,7 @@ import type { CachePolicy } from '../../shared/application/ports/cache-policy.po
 @Module({
   imports: [
     IdentityModule,
+    AuthModule,
     SequelizeModule.forFeature([QualificationModel]),
     forwardRef(() => BarberModule),
   ],
