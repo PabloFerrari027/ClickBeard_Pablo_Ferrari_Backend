@@ -2,7 +2,6 @@ import { PasswordHasher } from '../../../../identity/core/application/ports/pass
 import { VerificationCode } from '../../domain/entities/verification-code.entity';
 import { VerificationCodeRepository } from '../ports/verification-code-repository.port';
 import { VerificationCodeGenerator } from '../ports/verification-code-generator.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { GenerateVerificationCodeUseCase } from './generate-verification-code.use-case';
 
@@ -10,13 +9,14 @@ describe('GenerateVerificationCodeUseCase', () => {
   let verificationCodeRepository: jest.Mocked<VerificationCodeRepository>;
   let verificationCodeGenerator: jest.Mocked<VerificationCodeGenerator>;
   let passwordHasher: jest.Mocked<PasswordHasher>;
-  let clock: jest.Mocked<Clock>;
   let eventBus: jest.Mocked<EventBus>;
   let useCase: GenerateVerificationCodeUseCase;
 
   const now = new Date('2026-01-01T00:00:00.000Z');
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     verificationCodeRepository = {
       save: jest.fn(),
       findActiveByUserId: jest.fn(),
@@ -30,9 +30,6 @@ describe('GenerateVerificationCodeUseCase', () => {
       hash: jest.fn(),
       compare: jest.fn(),
     };
-    clock = {
-      now: jest.fn().mockReturnValue(now),
-    };
     eventBus = {
       publish: jest.fn(),
     };
@@ -40,9 +37,12 @@ describe('GenerateVerificationCodeUseCase', () => {
       verificationCodeRepository,
       verificationCodeGenerator,
       passwordHasher,
-      clock,
       eventBus,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('creates a new code, saves it and publishes VerificationCodeGenerated with the raw code', async () => {

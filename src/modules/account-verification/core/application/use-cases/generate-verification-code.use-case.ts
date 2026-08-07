@@ -7,7 +7,6 @@ import {
 } from '../dtos/generate-verification-code.dto';
 import { VerificationCodeRepository } from '../ports/verification-code-repository.port';
 import { VerificationCodeGenerator } from '../ports/verification-code-generator.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
@@ -19,14 +18,13 @@ export class GenerateVerificationCodeUseCase implements UseCase<
     private readonly verificationCodeRepository: VerificationCodeRepository,
     private readonly verificationCodeGenerator: VerificationCodeGenerator,
     private readonly passwordHasher: PasswordHasher,
-    private readonly clock: Clock,
     private readonly eventBus: EventBus,
   ) {}
 
   async execute(
     input: GenerateVerificationCodeInputDto,
   ): Promise<GenerateVerificationCodeOutputDto> {
-    const now = this.clock.now();
+    const now = new Date();
 
     const existingActiveCode =
       await this.verificationCodeRepository.findActiveByUserId(input.userId);

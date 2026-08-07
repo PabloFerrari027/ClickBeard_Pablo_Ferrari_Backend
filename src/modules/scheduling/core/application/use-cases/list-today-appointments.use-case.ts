@@ -6,7 +6,6 @@ import {
 import { toAppointmentDto } from '../mappers/appointment.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 const DEFAULT_PAGE = 1;
@@ -19,7 +18,6 @@ export class ListTodayAppointmentsUseCase implements UseCase<
   constructor(
     private readonly appointmentRepository: AppointmentRepository,
     private readonly userRepository: UserRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -30,7 +28,7 @@ export class ListTodayAppointmentsUseCase implements UseCase<
     const page = input.page && input.page > 0 ? input.page : DEFAULT_PAGE;
 
     const { appointments, total } = await this.appointmentRepository.findByDate(
-      this.clock.now(),
+      new Date(),
       page,
       DEFAULT_LIMIT,
     );

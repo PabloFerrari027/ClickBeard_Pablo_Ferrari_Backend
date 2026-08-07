@@ -10,7 +10,6 @@ import {
   ValidateVerificationCodeOutputDto,
 } from '../dtos/validate-verification-code.dto';
 import { VerificationCodeRepository } from '../ports/verification-code-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
@@ -21,14 +20,13 @@ export class ValidateVerificationCodeUseCase implements UseCase<
   constructor(
     private readonly verificationCodeRepository: VerificationCodeRepository,
     private readonly passwordHasher: PasswordHasher,
-    private readonly clock: Clock,
     private readonly eventBus: EventBus,
   ) {}
 
   async execute(
     input: ValidateVerificationCodeInputDto,
   ): Promise<ValidateVerificationCodeOutputDto> {
-    const now = this.clock.now();
+    const now = new Date();
 
     const code = await this.verificationCodeRepository.findActiveByUserId(
       input.userId,

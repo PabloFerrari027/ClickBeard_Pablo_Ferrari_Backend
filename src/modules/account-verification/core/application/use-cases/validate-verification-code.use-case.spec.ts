@@ -8,7 +8,6 @@ import {
   VerificationCodeProps,
 } from '../../domain/entities/verification-code.entity';
 import { VerificationCodeRepository } from '../ports/verification-code-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { ValidateVerificationCodeUseCase } from './validate-verification-code.use-case';
 
@@ -31,13 +30,14 @@ function buildCode(
 describe('ValidateVerificationCodeUseCase', () => {
   let verificationCodeRepository: jest.Mocked<VerificationCodeRepository>;
   let passwordHasher: jest.Mocked<PasswordHasher>;
-  let clock: jest.Mocked<Clock>;
   let eventBus: jest.Mocked<EventBus>;
   let useCase: ValidateVerificationCodeUseCase;
 
   const now = new Date('2026-01-01T00:05:00.000Z');
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     verificationCodeRepository = {
       save: jest.fn(),
       findActiveByUserId: jest.fn(),
@@ -48,18 +48,18 @@ describe('ValidateVerificationCodeUseCase', () => {
       hash: jest.fn(),
       compare: jest.fn(),
     };
-    clock = {
-      now: jest.fn().mockReturnValue(now),
-    };
     eventBus = {
       publish: jest.fn(),
     };
     useCase = new ValidateVerificationCodeUseCase(
       verificationCodeRepository,
       passwordHasher,
-      clock,
       eventBus,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('consumes the code and publishes VerificationSucceeded when the code is correct', async () => {

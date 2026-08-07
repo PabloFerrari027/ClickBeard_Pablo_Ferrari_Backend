@@ -1,29 +1,29 @@
 import { VerificationCode } from '../../domain/entities/verification-code.entity';
 import { VerificationCodeRepository } from '../ports/verification-code-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { InvalidateExpiredVerificationCodesUseCase } from './invalidate-expired-verification-codes.use-case';
 
 describe('InvalidateExpiredVerificationCodesUseCase', () => {
   let verificationCodeRepository: jest.Mocked<VerificationCodeRepository>;
-  let clock: jest.Mocked<Clock>;
   let useCase: InvalidateExpiredVerificationCodesUseCase;
 
   const now = new Date('2026-01-01T00:20:00.000Z');
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     verificationCodeRepository = {
       save: jest.fn(),
       findActiveByUserId: jest.fn(),
       findLatestByUserId: jest.fn(),
       findExpiredActive: jest.fn(),
     };
-    clock = {
-      now: jest.fn().mockReturnValue(now),
-    };
     useCase = new InvalidateExpiredVerificationCodesUseCase(
       verificationCodeRepository,
-      clock,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('invalidates every expired code returned by the repository', async () => {

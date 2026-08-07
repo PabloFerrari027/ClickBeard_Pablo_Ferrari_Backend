@@ -9,7 +9,6 @@ import {
 } from '../../domain/entities/appointment.entity';
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { CancelAppointmentUseCase } from './cancel-appointment.use-case';
 
@@ -32,11 +31,12 @@ function buildAppointment(
 
 describe('CancelAppointmentUseCase', () => {
   let appointmentRepository: jest.Mocked<AppointmentRepository>;
-  let clock: jest.Mocked<Clock>;
   let eventBus: jest.Mocked<EventBus>;
   let useCase: CancelAppointmentUseCase;
 
   beforeEach(() => {
+    jest.useFakeTimers();
+
     appointmentRepository = {
       save: jest.fn(),
       findById: jest.fn(),
@@ -44,23 +44,20 @@ describe('CancelAppointmentUseCase', () => {
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
     };
-    clock = {
-      now: jest.fn(),
-    };
     eventBus = {
       publish: jest.fn(),
     };
-    useCase = new CancelAppointmentUseCase(
-      appointmentRepository,
-      clock,
-      eventBus,
-    );
+    useCase = new CancelAppointmentUseCase(appointmentRepository, eventBus);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('cancels the appointment and publishes AppointmentCancelled', async () => {
     const appointment = buildAppointment();
     appointmentRepository.findById.mockResolvedValue(appointment);
-    clock.now.mockReturnValue(new Date(2026, 0, 10, 7, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 10, 7, 0, 0, 0));
 
     const result = await useCase.execute({
       appointmentId: 'appointment-id',
@@ -97,7 +94,7 @@ describe('CancelAppointmentUseCase', () => {
 
   it('throws CancellationWindowExpiredError when less than 2 hours remain', async () => {
     appointmentRepository.findById.mockResolvedValue(buildAppointment());
-    clock.now.mockReturnValue(new Date(2026, 0, 10, 9, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0, 0));
 
     await expect(
       useCase.execute({
@@ -114,7 +111,7 @@ describe('CancelAppointmentUseCase', () => {
         cancelledAt: new Date(2026, 0, 2, 0, 0, 0, 0),
       }),
     );
-    clock.now.mockReturnValue(new Date(2026, 0, 3, 0, 0, 0, 0));
+    jest.setSystemTime(new Date(2026, 0, 3, 0, 0, 0, 0));
 
     await expect(
       useCase.execute({
