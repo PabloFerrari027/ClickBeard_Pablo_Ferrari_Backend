@@ -1,4 +1,5 @@
 import { AppointmentAlreadyCancelledError } from '../errors/appointment-already-cancelled.error';
+import { CancellationReasonRequiredError } from '../errors/cancellation-reason-required.error';
 import { CancellationWindowExpiredError } from '../errors/cancellation-window-expired.error';
 import { AppointmentStatus } from '../enums/appointment-status.enum';
 import { TimeSlot } from '../value-objects/time-slot.value-object';
@@ -17,6 +18,7 @@ function buildProps(
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     cancelledAt: null,
+    cancellationReason: null,
     ...overrides,
   };
 }
@@ -82,6 +84,55 @@ describe('Appointment', () => {
 
       expect(() =>
         appointment.cancel(new Date(2026, 0, 5, 0, 0, 0, 0)),
+      ).toThrow(AppointmentAlreadyCancelledError);
+    });
+  });
+
+  describe('cancelByAdmin', () => {
+    it('cancels with a reason even less than 2 hours before the start', () => {
+      const appointment = Appointment.restore(buildProps());
+      const now = new Date(2026, 0, 10, 9, 45, 0, 0);
+
+      appointment.cancelByAdmin(now, 'Barber is sick');
+
+      expect(appointment.getStatus()).toBe(AppointmentStatus.CANCELLED);
+      expect(appointment.getCancelledAt()).toEqual(now);
+      expect(appointment.getUpdatedAt()).toEqual(now);
+      expect(appointment.getCancellationReason()).toBe('Barber is sick');
+    });
+
+    it('trims the reason before storing it', () => {
+      const appointment = Appointment.restore(buildProps());
+
+      appointment.cancelByAdmin(
+        new Date(2026, 0, 10, 9, 0, 0, 0),
+        '  Barber is sick  ',
+      );
+
+      expect(appointment.getCancellationReason()).toBe('Barber is sick');
+    });
+
+    it('throws CancellationReasonRequiredError when the reason is blank', () => {
+      const appointment = Appointment.restore(buildProps());
+
+      expect(() =>
+        appointment.cancelByAdmin(new Date(2026, 0, 10, 9, 0, 0, 0), '   '),
+      ).toThrow(CancellationReasonRequiredError);
+    });
+
+    it('throws AppointmentAlreadyCancelledError when already cancelled', () => {
+      const appointment = Appointment.restore(
+        buildProps({
+          status: AppointmentStatus.CANCELLED,
+          cancelledAt: new Date(2026, 0, 2, 0, 0, 0, 0),
+        }),
+      );
+
+      expect(() =>
+        appointment.cancelByAdmin(
+          new Date(2026, 0, 5, 0, 0, 0, 0),
+          'Any reason',
+        ),
       ).toThrow(AppointmentAlreadyCancelledError);
     });
   });
