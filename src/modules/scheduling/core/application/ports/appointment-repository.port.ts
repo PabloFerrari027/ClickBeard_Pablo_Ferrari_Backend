@@ -34,4 +34,16 @@ export interface AppointmentRepository {
     page: number,
     limit: number,
   ): Promise<PaginatedAppointments>;
+  /**
+   * All SCHEDULED appointments for a barber starting within [start, end).
+   * Unpaginated by design — used only internally by
+   * CancelAppointmentsForBarberUnavailabilityUseCase (never exposed via a
+   * route), and bounded by how many slots a barber can realistically have
+   * in an unavailability window.
+   */
+  findScheduledByBarberAndRange(
+    barberId: string,
+    start: Date,
+    end: Date,
+  ): Promise<Appointment[]>;
 }
