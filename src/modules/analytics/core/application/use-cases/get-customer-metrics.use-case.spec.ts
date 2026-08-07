@@ -6,7 +6,6 @@ import { Password } from '../../../../identity/core/domain/value-objects/passwor
 import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { PeriodPreset } from '../../domain/enums/period-preset.enum';
 import { CustomerMetricsQuery } from '../ports/customer-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { GetCustomerMetricsUseCase } from './get-customer-metrics.use-case';
 
 function buildUser(id: string, role: UserRole): User {
@@ -25,12 +24,13 @@ function buildUser(id: string, role: UserRole): User {
 describe('GetCustomerMetricsUseCase', () => {
   let customerMetricsQuery: jest.Mocked<CustomerMetricsQuery>;
   let userRepository: jest.Mocked<UserRepository>;
-  let clock: jest.Mocked<Clock>;
   let useCase: GetCustomerMetricsUseCase;
 
   const now = new Date(2026, 7, 6, 12, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     customerMetricsQuery = {
       topCustomersByAppointments: jest.fn(),
       countActiveCustomers: jest.fn(),
@@ -42,12 +42,14 @@ describe('GetCustomerMetricsUseCase', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
     };
-    clock = { now: jest.fn().mockReturnValue(now) };
     useCase = new GetCustomerMetricsUseCase(
       customerMetricsQuery,
       userRepository,
-      clock,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns aggregated customer metrics without a last appointment when no customerId is given', async () => {

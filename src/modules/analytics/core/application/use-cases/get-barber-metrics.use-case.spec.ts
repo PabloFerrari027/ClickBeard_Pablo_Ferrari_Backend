@@ -6,7 +6,6 @@ import { Password } from '../../../../identity/core/domain/value-objects/passwor
 import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { PeriodPreset } from '../../domain/enums/period-preset.enum';
 import { BarberMetricsQuery } from '../ports/barber-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { GetBarberMetricsUseCase } from './get-barber-metrics.use-case';
 
 function buildUser(id: string, role: UserRole): User {
@@ -25,12 +24,13 @@ function buildUser(id: string, role: UserRole): User {
 describe('GetBarberMetricsUseCase', () => {
   let barberMetricsQuery: jest.Mocked<BarberMetricsQuery>;
   let userRepository: jest.Mocked<UserRepository>;
-  let clock: jest.Mocked<Clock>;
   let useCase: GetBarberMetricsUseCase;
 
   const now = new Date(2026, 7, 6, 12, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     barberMetricsQuery = {
       countTotal: jest.fn(),
       countAppointmentsByBarber: jest.fn(),
@@ -43,12 +43,11 @@ describe('GetBarberMetricsUseCase', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
     };
-    clock = { now: jest.fn().mockReturnValue(now) };
-    useCase = new GetBarberMetricsUseCase(
-      barberMetricsQuery,
-      userRepository,
-      clock,
-    );
+    useCase = new GetBarberMetricsUseCase(barberMetricsQuery, userRepository);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns aggregated barber metrics for an admin requester', async () => {

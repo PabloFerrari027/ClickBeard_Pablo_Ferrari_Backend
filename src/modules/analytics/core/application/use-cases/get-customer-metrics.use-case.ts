@@ -6,7 +6,6 @@ import {
 import { toDateRange } from '../mappers/date-range.mapper';
 import { ensureRequesterIsAdmin } from '../policies/ensure-requester-is-admin.policy';
 import { CustomerMetricsQuery } from '../ports/customer-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { UseCase } from '../../../../../shared/application/use-case';
 
 const DEFAULT_TOP_LIMIT = 5;
@@ -18,7 +17,6 @@ export class GetCustomerMetricsUseCase implements UseCase<
   constructor(
     private readonly customerMetricsQuery: CustomerMetricsQuery,
     private readonly userRepository: UserRepository,
-    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -26,7 +24,7 @@ export class GetCustomerMetricsUseCase implements UseCase<
   ): Promise<GetCustomerMetricsOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const range = toDateRange(input.filter, this.clock);
+    const range = toDateRange(input.filter, new Date());
 
     const [
       topCustomersByAppointments,

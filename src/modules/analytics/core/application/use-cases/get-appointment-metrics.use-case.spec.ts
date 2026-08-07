@@ -6,7 +6,6 @@ import { Password } from '../../../../identity/core/domain/value-objects/passwor
 import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { PeriodPreset } from '../../domain/enums/period-preset.enum';
 import { AppointmentMetricsQuery } from '../ports/appointment-metrics-query.port';
-import { Clock } from '../../../../../shared/application/ports/clock.port';
 import { GetAppointmentMetricsUseCase } from './get-appointment-metrics.use-case';
 
 function buildUser(id: string, role: UserRole): User {
@@ -25,12 +24,13 @@ function buildUser(id: string, role: UserRole): User {
 describe('GetAppointmentMetricsUseCase', () => {
   let appointmentMetricsQuery: jest.Mocked<AppointmentMetricsQuery>;
   let userRepository: jest.Mocked<UserRepository>;
-  let clock: jest.Mocked<Clock>;
   let useCase: GetAppointmentMetricsUseCase;
 
   const now = new Date(2026, 7, 6, 12, 0, 0);
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+
     appointmentMetricsQuery = {
       countTotal: jest.fn(),
       countInRange: jest.fn(),
@@ -45,12 +45,14 @@ describe('GetAppointmentMetricsUseCase', () => {
       findById: jest.fn(),
       findByEmail: jest.fn(),
     };
-    clock = { now: jest.fn().mockReturnValue(now) };
     useCase = new GetAppointmentMetricsUseCase(
       appointmentMetricsQuery,
       userRepository,
-      clock,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns aggregated appointment metrics for an admin requester', async () => {
