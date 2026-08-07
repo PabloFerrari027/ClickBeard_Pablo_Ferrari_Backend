@@ -9,4 +9,5 @@ export interface AppointmentDto {
   createdAt: Date;
   updatedAt: Date;
   cancelledAt: Date | null;
+  cancellationReason: string | null;
 }

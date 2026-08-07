@@ -21,6 +21,7 @@ function buildAppointment(): Appointment {
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     cancelledAt: null,
+    cancellationReason: null,
   });
 }
 

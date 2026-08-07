@@ -13,5 +13,6 @@ export function toAppointmentDto(appointment: Appointment): AppointmentDto {
     createdAt: appointment.getCreatedAt(),
     updatedAt: appointment.getUpdatedAt(),
     cancelledAt: appointment.getCancelledAt(),
+    cancellationReason: appointment.getCancellationReason(),
   };
 }

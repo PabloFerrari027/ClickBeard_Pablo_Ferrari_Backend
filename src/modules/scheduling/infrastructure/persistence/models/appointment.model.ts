@@ -13,6 +13,7 @@ export interface AppointmentModelAttributes {
   createdAt: Date;
   updatedAt: Date;
   cancelledAt: Date | null;
+  cancellationReason: string | null;
 }
 
 /**
@@ -60,4 +61,7 @@ export class AppointmentModel extends Model<
 
   @Column({ type: DataType.DATE, allowNull: true })
   declare cancelledAt: Date | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare cancellationReason: string | null;
 }
