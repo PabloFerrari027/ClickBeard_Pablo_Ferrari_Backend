@@ -21,10 +21,10 @@ import { ValidateVerificationCodeResponseDto } from '../dtos/validate-verificati
 
 /**
  * Only the genuinely client-facing use cases are exposed here.
- * GenerateVerificationCode is meant to run off the UserLoggedIn event
- * (a future queue consumer), and InvalidateExpiredVerificationCodes is
- * a maintenance job for a future scheduler — exposing either as a
- * public route would let any caller generate/invalidate codes for
+ * GenerateVerificationCode runs off the UserLoggedIn event via
+ * UserLoggedInConsumer, and InvalidateExpiredVerificationCodes is a
+ * maintenance job run by ExpiredCodesSweepScheduler — exposing either as
+ * a public route would let any caller generate/invalidate codes for
  * arbitrary accounts.
  */
 @ApiTags('Account Verification')
