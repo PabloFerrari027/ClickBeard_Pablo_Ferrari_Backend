@@ -55,6 +55,7 @@ describe('DispatchNotificationUseCase', () => {
       recipient: 'jane@example.com',
       subject: 'Bem-vindo, Jane!',
       body: 'Ola Jane, sua conta foi criada.',
+      language: 'pt-BR',
     });
   });
 

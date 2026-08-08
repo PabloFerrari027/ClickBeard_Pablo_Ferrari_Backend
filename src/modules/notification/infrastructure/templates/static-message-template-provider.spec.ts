@@ -20,6 +20,16 @@ describe('StaticMessageTemplateProvider', () => {
     expect(template).not.toBeNull();
   });
 
+  it('returns the pt-BR template when requested', async () => {
+    const template = await provider.getTemplate('UserRegistered', 'pt-BR');
+
+    expect(template).not.toBeNull();
+    expect(template?.subject).toContain('{{name}}');
+    expect(template?.body).not.toEqual(
+      (await provider.getTemplate('UserRegistered', DEFAULT_LANGUAGE))?.body,
+    );
+  });
+
   it('returns null for an event with no template (e.g. one that never carries a recipientEmail)', async () => {
     const template = await provider.getTemplate(
       'AppointmentCreated',
@@ -45,12 +55,14 @@ describe('StaticMessageTemplateProvider', () => {
     'UserLoggedIn',
     'AppointmentCancelledByAdmin',
   ])(
-    'has a template for %s with a non-empty subject and body',
+    'has a template for %s with a non-empty subject and body in both supported languages',
     async (eventName) => {
-      const template = await provider.getTemplate(eventName, DEFAULT_LANGUAGE);
+      for (const language of [DEFAULT_LANGUAGE, 'pt-BR']) {
+        const template = await provider.getTemplate(eventName, language);
 
-      expect(template?.subject.length).toBeGreaterThan(0);
-      expect(template?.body.length).toBeGreaterThan(0);
+        expect(template?.subject.length).toBeGreaterThan(0);
+        expect(template?.body.length).toBeGreaterThan(0);
+      }
     },
   );
 });

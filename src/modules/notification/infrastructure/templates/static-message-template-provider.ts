@@ -20,33 +20,105 @@ type TemplatesByLanguage = Record<LanguageCode, MessageTemplate>;
  */
 const TEMPLATES: Record<string, TemplatesByLanguage> = {
   UserRegistered: {
-    [DEFAULT_LANGUAGE]: {
-      subject: 'Welcome to ClickBeard, {{name}}!',
-      body: 'Hi {{name}}, thanks for signing up. We are glad to have you.',
+    en: {
+      subject: 'Welcome to ClickBeard, {{name}}',
+      body:
+        'Dear {{name}},\n\n' +
+        'Welcome to ClickBeard. Your account has been created successfully, and you can now book appointments with our barbers.\n\n' +
+        'If you have any questions, our support team is available to assist you.\n\n' +
+        'Best regards,\n' +
+        'The ClickBeard Team',
+    },
+    'pt-BR': {
+      subject: 'Bem-vindo(a) à ClickBeard, {{name}}',
+      body:
+        'Prezado(a) {{name}},\n\n' +
+        'Seja bem-vindo(a) à ClickBeard. Sua conta foi criada com sucesso e você já pode agendar horários com nossos barbeiros.\n\n' +
+        'Caso tenha alguma dúvida, nossa equipe de suporte está à disposição.\n\n' +
+        'Atenciosamente,\n' +
+        'Equipe ClickBeard',
     },
   },
   PasswordChanged: {
-    [DEFAULT_LANGUAGE]: {
-      subject: 'Your ClickBeard password was changed',
-      body: 'Hi {{name}}, your password was just changed. If this was not you, please contact support immediately.',
+    en: {
+      subject: 'Your ClickBeard password has been changed',
+      body:
+        'Dear {{name}},\n\n' +
+        'This is a confirmation that the password for your ClickBeard account was recently changed.\n\n' +
+        'If you did not request this change, please contact our support team immediately so we can help secure your account.\n\n' +
+        'Best regards,\n' +
+        'The ClickBeard Team',
+    },
+    'pt-BR': {
+      subject: 'Sua senha da ClickBeard foi alterada',
+      body:
+        'Prezado(a) {{name}},\n\n' +
+        'Confirmamos que a senha da sua conta ClickBeard foi alterada recentemente.\n\n' +
+        'Caso não tenha solicitado essa alteração, entre em contato com nossa equipe de suporte imediatamente para que possamos ajudar a proteger sua conta.\n\n' +
+        'Atenciosamente,\n' +
+        'Equipe ClickBeard',
     },
   },
   VerificationCodeGenerated: {
-    [DEFAULT_LANGUAGE]: {
+    en: {
       subject: 'Your ClickBeard verification code',
-      body: 'Hi {{name}}, your verification code is {{code}}. It expires in 10 minutes.',
+      body:
+        'Dear {{name}},\n\n' +
+        'Your verification code is: {{code}}\n\n' +
+        'This code will expire in 10 minutes. If you did not request this code, please disregard this message.\n\n' +
+        'Best regards,\n' +
+        'The ClickBeard Team',
+    },
+    'pt-BR': {
+      subject: 'Seu código de verificação ClickBeard',
+      body:
+        'Prezado(a) {{name}},\n\n' +
+        'Seu código de verificação é: {{code}}\n\n' +
+        'Este código expira em 10 minutos. Caso não tenha solicitado este código, por favor desconsidere esta mensagem.\n\n' +
+        'Atenciosamente,\n' +
+        'Equipe ClickBeard',
     },
   },
   UserLoggedIn: {
-    [DEFAULT_LANGUAGE]: {
+    en: {
       subject: 'New sign-in to your ClickBeard account',
-      body: 'Hi {{name}}, we noticed a new sign-in to your account. If this was not you, please contact support.',
+      body:
+        'Dear {{name}},\n\n' +
+        'We are writing to inform you of a new sign-in to your ClickBeard account.\n\n' +
+        'If this was you, no further action is needed. If you do not recognize this activity, please contact our support team immediately.\n\n' +
+        'Best regards,\n' +
+        'The ClickBeard Team',
+    },
+    'pt-BR': {
+      subject: 'Novo acesso à sua conta ClickBeard',
+      body:
+        'Prezado(a) {{name}},\n\n' +
+        'Informamos que houve um novo acesso à sua conta ClickBeard.\n\n' +
+        'Se foi você, nenhuma ação adicional é necessária. Caso não reconheça esta atividade, entre em contato com nossa equipe de suporte imediatamente.\n\n' +
+        'Atenciosamente,\n' +
+        'Equipe ClickBeard',
     },
   },
   AppointmentCancelledByAdmin: {
-    [DEFAULT_LANGUAGE]: {
-      subject: 'Your ClickBeard appointment was cancelled',
-      body: 'Hi {{name}}, your appointment was cancelled. Reason: {{reason}}. We are sorry for the inconvenience.',
+    en: {
+      subject: 'Your ClickBeard appointment has been cancelled',
+      body:
+        'Dear {{name}},\n\n' +
+        'We regret to inform you that your appointment scheduled for {{startAt}} has been cancelled.\n\n' +
+        'Reason: {{reason}}\n\n' +
+        'We apologize for any inconvenience this may cause and invite you to schedule a new appointment at your convenience.\n\n' +
+        'Best regards,\n' +
+        'The ClickBeard Team',
+    },
+    'pt-BR': {
+      subject: 'Seu agendamento na ClickBeard foi cancelado',
+      body:
+        'Prezado(a) {{name}},\n\n' +
+        'Informamos que seu agendamento previsto para {{startAt}} foi cancelado.\n\n' +
+        'Motivo: {{reason}}\n\n' +
+        'Pedimos desculpas pelo transtorno e convidamos você a agendar um novo horário quando for conveniente.\n\n' +
+        'Atenciosamente,\n' +
+        'Equipe ClickBeard',
     },
   },
 };

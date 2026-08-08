@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createTransport, Transporter } from 'nodemailer';
 
+import { renderBrandedEmailHtml } from './branded-email-html';
 import { NotificationDeliveryError } from './errors/notification-delivery.error';
 import {
   NotificationSender,
@@ -32,6 +33,10 @@ export class SmtpNotificationSender implements NotificationSender {
         to: notification.recipient,
         subject: notification.subject,
         text: notification.body,
+        html: renderBrandedEmailHtml({
+          body: notification.body,
+          language: notification.language,
+        }),
       });
     } catch (error) {
       throw new NotificationDeliveryError(error);

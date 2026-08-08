@@ -57,6 +57,7 @@ describe('SmtpNotificationSender', () => {
       recipient: 'jane@example.com',
       subject: 'Hello',
       body: 'World',
+      language: 'en',
     });
 
     expect(sendMail).toHaveBeenCalledWith({
@@ -64,7 +65,26 @@ describe('SmtpNotificationSender', () => {
       to: 'jane@example.com',
       subject: 'Hello',
       text: 'World',
+      html: expect.stringContaining('World'),
     });
+  });
+
+  it('renders the html body using the notification language', async () => {
+    sendMail.mockResolvedValue(undefined);
+    const sender = buildSender();
+
+    await sender.send({
+      recipient: 'jane@example.com',
+      subject: 'Ola',
+      body: 'Mundo',
+      language: 'pt-BR',
+    });
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining('mensagem automática da ClickBeard'),
+      }),
+    );
   });
 
   it('wraps a transport failure in NotificationDeliveryError', async () => {
@@ -72,7 +92,12 @@ describe('SmtpNotificationSender', () => {
     const sender = buildSender();
 
     await expect(
-      sender.send({ recipient: 'jane@example.com', subject: 'Hi', body: 'X' }),
+      sender.send({
+        recipient: 'jane@example.com',
+        subject: 'Hi',
+        body: 'X',
+        language: 'en',
+      }),
     ).rejects.toThrow(NotificationDeliveryError);
   });
 });

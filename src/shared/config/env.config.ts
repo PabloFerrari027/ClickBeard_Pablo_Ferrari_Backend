@@ -165,6 +165,17 @@ export class EnvConfig {
     process.env.THROTTLE_LIMIT ?? 100,
   );
 
+  /**
+   * Raw, unvalidated language setting for outbound notifications (e.g.
+   * 'pt-BR', 'en-US'). Deliberately not restricted with @IsIn: an
+   * unrecognized or missing value should fall back to the default
+   * language at resolution time rather than crash the app on startup.
+   */
+  @IsOptional()
+  @IsString()
+  private readonly SYSTEM_LANGUAGE: string | undefined =
+    process.env.SYSTEM_LANGUAGE || undefined;
+
   constructor() {
     const errors = validateSync(this);
 
@@ -302,5 +313,9 @@ export class EnvConfig {
 
   get throttleLimit(): number {
     return this.THROTTLE_LIMIT;
+  }
+
+  get systemLanguage(): string | undefined {
+    return this.SYSTEM_LANGUAGE;
   }
 }
