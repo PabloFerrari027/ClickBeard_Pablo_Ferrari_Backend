@@ -40,6 +40,7 @@ export class DispatchNotificationUseCase implements UseCase<DomainEvent, void> {
       recipient: event.recipientEmail,
       subject,
       body,
+      language,
     });
   }
 }
