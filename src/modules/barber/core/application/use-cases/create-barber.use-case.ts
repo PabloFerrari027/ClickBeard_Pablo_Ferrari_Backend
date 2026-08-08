@@ -30,7 +30,7 @@ export class CreateBarberUseCase implements UseCase<
   async execute(input: CreateBarberInputDto): Promise<CreateBarberOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
-    const user = await this.userRepository.findById(input.userId);
+    const user = await this.userRepository.findByEmail(input.email);
 
     if (!user) {
       throw new UserNotFoundError();
@@ -40,7 +40,7 @@ export class CreateBarberUseCase implements UseCase<
       throw new UserIsNotBarberError();
     }
 
-    const existingBarber = await this.barberRepository.findById(input.userId);
+    const existingBarber = await this.barberRepository.findById(user.getId());
 
     if (existingBarber) {
       throw new BarberAlreadyExistsError();
@@ -61,7 +61,7 @@ export class CreateBarberUseCase implements UseCase<
     }
 
     const barber = Barber.create({
-      userId: input.userId,
+      userId: user.getId(),
       name: user.getName(),
       age: Age.create(input.age),
       hiredAt: input.hiredAt,

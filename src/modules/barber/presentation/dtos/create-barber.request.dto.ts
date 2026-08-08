@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   ArrayNotEmpty,
   IsDateString,
+  IsEmail,
   IsInt,
   IsUUID,
   Max,
@@ -9,9 +10,9 @@ import {
 } from 'class-validator';
 
 export class CreateBarberRequestDto {
-  @ApiProperty({ description: 'Id of the identity user becoming a barber' })
-  @IsUUID()
-  userId: string;
+  @ApiProperty({ description: 'Email of the identity user becoming a barber' })
+  @IsEmail()
+  email: string;
 
   @ApiProperty({ example: 30 })
   @IsInt()

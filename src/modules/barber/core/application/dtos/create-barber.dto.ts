@@ -2,7 +2,7 @@ import { BarberDto } from './barber.dto';
 
 export interface CreateBarberInputDto {
   requesterId: string;
-  userId: string;
+  email: string;
   age: number;
   hiredAt: Date;
   qualificationIds: string[];
