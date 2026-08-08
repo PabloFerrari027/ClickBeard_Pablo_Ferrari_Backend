@@ -35,7 +35,7 @@ ClickBeard é uma API REST para gestão de uma barbearia: cadastro de clientes/b
 - Autenticação com **verificação em duas etapas**: login confirma a senha mas só emite tokens depois que o usuário valida um código de 6+ dígitos enviado por e-mail.
 - Sessões via **JWT de acesso + refresh token rotativo**, com revogação e lista de tokens no banco.
 - Cadastro de **qualificações** (serviços) e de **barbeiros**, com N:N entre eles.
-- **Agendamento de horários** com grade de 30 minutos, horário comercial fixo, aviso mínimo de 2h para reservar/cancelar, e prevenção de double-booking via índice único parcial no banco.
+- **Agendamento de horários** com grade de 30 minutos, horário comercial fixo, aviso mínimo de 2h para reservar/cancelar, e prevenção de double-booking via índice único parcial no banco. Quando o próprio cliente cancela, ele é notificado por e-mail confirmando o cancelamento.
 - **Cancelamento administrativo de agendamentos**: um `ADMIN` pode cancelar qualquer agendamento informando um motivo obrigatório, sem a janela mínima de 2h que se aplica ao cliente; o cliente é notificado por e-mail com o motivo.
 - **Indisponibilidade de barbeiros** (faltas/doenças): um `ADMIN` registra um período de indisponibilidade por barbeiro, o que bloqueia novas reservas nesse período e **cancela em cascata** (com notificação por e-mail) qualquer agendamento já existente que caia dentro dele.
 - **Analytics administrativo**: métricas de usuários, agendamentos, barbeiros, clientes e ocupação, filtráveis por período.
@@ -716,7 +716,7 @@ Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consu
 | `VerificationFailed` | `ValidateVerificationCodeUseCase` | `{ userId, reason }` | não | nenhum consumidor hoje (publicado para observabilidade/uso futuro) |
 | `VerificationSucceeded` | `ValidateVerificationCodeUseCase` | `{ userId }` | não | nenhum consumidor hoje |
 | `AppointmentCreated` | `CreateAppointmentUseCase` | `{ appointmentId, customerId, barberId, qualificationId, startAt }` | não | nenhum consumidor hoje |
-| `AppointmentCancelled` | `CancelAppointmentUseCase` (cliente cancela o próprio) | `{ appointmentId, customerId, barberId, startAt }` | não | nenhum consumidor hoje |
+| `AppointmentCancelled` | `CancelAppointmentUseCase` (cliente cancela o próprio) | `{ appointmentId, customerId, barberId, startAt, name }` | sim | `notification` (e-mail "seu agendamento foi cancelado") |
 | `AppointmentCancelledByAdmin` | `CancelAppointmentByAdminUseCase` **e** `CancelAppointmentsForBarberUnavailabilityUseCase` (cascata de indisponibilidade) | `{ appointmentId, customerId, barberId, startAt, reason, name }` | sim | `notification` (e-mail "seu agendamento foi cancelado", com o motivo) |
 | `BarberUnavailabilityCreated` | `CreateBarberUnavailabilityUseCase` | `{ unavailabilityId, barberId, startAt, endAt, reason }` | não | `scheduling` (`BarberUnavailabilityCreatedConsumer`, cancela em cascata todo agendamento `SCHEDULED` do barbeiro que caia dentro do período) |
 
@@ -893,7 +893,7 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | Barbeiro precisa ter a qualificação pedida | `BarberDoesNotHaveQualificationError` |
 | **Um `BARBER` pode reservar um horário com outro `BARBER`** | `POST /appointments` é `@Auth()` sem restrição de papel — `customerId` é sempre o requester autenticado, e `CreateAppointmentUseCase` só exige que ele exista e esteja ativo (`UserNotFoundError` senão), sem checar `role`. Um usuário com `role=BARBER` age como cliente normalmente ao reservar com qualquer outro barbeiro |
 | **Um `BARBER` lista/gerencia seus próprios agendamentos como cliente normalmente** | `GET /appointments/me` (`ListCustomerAppointmentsUseCase`) e `GET /appointments/:id`/`DELETE /appointments/:id` filtram só por `customerId === requester.id`, nunca por papel — inclui agendamentos feitos com outros barbeiros |
-| Cancelamento pelo cliente é só do próprio agendamento | `CancelAppointmentUseCase` (`DELETE /appointments/:id`) não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento; continua respeitando a janela mínima de 2h |
+| Cancelamento pelo cliente é só do próprio agendamento | `CancelAppointmentUseCase` (`DELETE /appointments/:id`) não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento; continua respeitando a janela mínima de 2h; cliente notificado por e-mail confirmando o cancelamento (`AppointmentCancelledEvent`) |
 | **ADMIN pode cancelar qualquer agendamento, com motivo obrigatório** | `CancelAppointmentByAdminUseCase` (`PATCH /appointments/:id/cancel`) — **ignora** a janela mínima de 2h (`cancelByAdmin`, distinto de `cancel`), motivo obrigatório (`CancellationReasonRequiredError` senão) persistido em `cancellation_reason`, cliente notificado por e-mail (`AppointmentCancelledByAdminEvent`) |
 | Não é possível reservar um horário em que o barbeiro está marcado como indisponível | `BarberUnavailableError` (409, distinto de `BarberTimeSlotConflictError`) — checado via `AvailabilityService.isBarberUnavailable` dentro da mesma transação da checagem de conflito |
 | A listagem de horários disponíveis exclui os horários bloqueados por indisponibilidade | `ListAvailableTimeSlotsUseCase` combina `getBookedSlots` e `getUnavailableSlots` |

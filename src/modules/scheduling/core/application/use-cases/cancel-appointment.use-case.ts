@@ -1,5 +1,7 @@
+import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { AppointmentAccessDeniedError } from '../../domain/errors/appointment-access-denied.error';
 import { AppointmentNotFoundError } from '../../domain/errors/appointment-not-found.error';
+import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { AppointmentCancelledEvent } from '../../domain/events/appointment-cancelled.event';
 import {
   CancelAppointmentInputDto,
@@ -16,6 +18,7 @@ export class CancelAppointmentUseCase implements UseCase<
 > {
   constructor(
     private readonly appointmentRepository: AppointmentRepository,
+    private readonly userRepository: UserRepository,
     private readonly eventBus: EventBus,
   ) {}
 
@@ -34,6 +37,14 @@ export class CancelAppointmentUseCase implements UseCase<
       throw new AppointmentAccessDeniedError();
     }
 
+    const customer = await this.userRepository.findById(
+      appointment.getCustomerId(),
+    );
+
+    if (!customer) {
+      throw new UserNotFoundError();
+    }
+
     const now = new Date();
 
     appointment.cancel(now);
@@ -42,11 +53,13 @@ export class CancelAppointmentUseCase implements UseCase<
 
     await this.eventBus.publish(
       new AppointmentCancelledEvent(
+        customer.getEmail().getValue(),
         {
           appointmentId: appointment.getId(),
           customerId: appointment.getCustomerId(),
           barberId: appointment.getBarberId(),
           startAt: appointment.getTimeSlot().getStart().toISOString(),
+          name: customer.getName(),
         },
         now,
       ),
