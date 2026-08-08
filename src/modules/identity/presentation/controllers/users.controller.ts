@@ -7,12 +7,14 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { Auth } from '../../../auth/presentation/decorators/auth.decorator';
 import { CurrentUser } from '../../../auth/presentation/decorators/current-user.decorator';
+import { Self } from '../../../auth/presentation/decorators/self.decorator';
 import { SelfOrAdmin } from '../../../auth/presentation/decorators/self-or-admin.decorator';
 import type { AuthenticatedRequestUser } from '../../../auth/presentation/types/authenticated-request-user';
 import { FieldSelectionInterceptor } from '../../../../shared/presentation/interceptors/field-selection.interceptor';
@@ -23,11 +25,15 @@ import { ChangePasswordUseCase } from '../../core/application/use-cases/change-p
 import { ChangeUserRoleUseCase } from '../../core/application/use-cases/change-user-role.use-case';
 import { DeactivateUserUseCase } from '../../core/application/use-cases/deactivate-user.use-case';
 import { GetUserProfileUseCase } from '../../core/application/use-cases/get-user-profile.use-case';
+import { ListUsersUseCase } from '../../core/application/use-cases/list-users.use-case';
 import { RegisterUserUseCase } from '../../core/application/use-cases/register-user.use-case';
+import { UpdateUserProfileUseCase } from '../../core/application/use-cases/update-user-profile.use-case';
 import { AuthenticateUserRequestDto } from '../dtos/authenticate-user.request.dto';
 import { ChangePasswordRequestDto } from '../dtos/change-password.request.dto';
 import { ChangeUserRoleRequestDto } from '../dtos/change-user-role.request.dto';
+import { ListUsersResponseDto } from '../dtos/list-users.response.dto';
 import { RegisterUserRequestDto } from '../dtos/register-user.request.dto';
+import { UpdateUserProfileRequestDto } from '../dtos/update-user-profile.request.dto';
 import { UserResponseDto } from '../dtos/user.response.dto';
 
 @ApiTags('Users')
@@ -38,7 +44,9 @@ export class UsersController {
     private readonly registerUserUseCase: RegisterUserUseCase,
     private readonly authenticateUserUseCase: AuthenticateUserUseCase,
     private readonly getUserProfileUseCase: GetUserProfileUseCase,
+    private readonly listUsersUseCase: ListUsersUseCase,
     private readonly changePasswordUseCase: ChangePasswordUseCase,
+    private readonly updateUserProfileUseCase: UpdateUserProfileUseCase,
     private readonly changeUserRoleUseCase: ChangeUserRoleUseCase,
     private readonly deactivateUserUseCase: DeactivateUserUseCase,
     private readonly activateUserUseCase: ActivateUserUseCase,
@@ -48,7 +56,7 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:
-      'Registers a new user. Open to anyone for CLIENT/BARBER; creating an ADMIN requires requesterId to belong to an existing admin (enforced in Core, no session exists yet at this point so this route stays public)',
+      'Registers a new user. Always created as CLIENT — promoting to BARBER/ADMIN requires an existing admin via PATCH /users/:id/role',
   })
   @ApiOkResponse({ type: UserResponseDto })
   async register(
@@ -69,6 +77,16 @@ export class UsersController {
     const { user } = await this.authenticateUserUseCase.execute(body);
 
     return user;
+  }
+
+  @Get()
+  @Auth(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Lists users' })
+  @ApiOkResponse({ type: ListUsersResponseDto })
+  async list(@Query('page') page?: string): Promise<ListUsersResponseDto> {
+    return this.listUsersUseCase.execute({
+      page: page ? Number(page) : undefined,
+    });
   }
 
   @Get(':id')
@@ -92,6 +110,25 @@ export class UsersController {
     @Body() body: ChangePasswordRequestDto,
   ): Promise<void> {
     await this.changePasswordUseCase.execute({ userId: id, ...body });
+  }
+
+  @Patch(':id/profile')
+  @Self()
+  @ApiOperation({
+    summary:
+      "Updates a user's own profile (name and/or birth date) — only the account owner can call this, not even an admin",
+  })
+  @ApiOkResponse({ type: UserResponseDto })
+  async updateProfile(
+    @Param('id') id: string,
+    @Body() body: UpdateUserProfileRequestDto,
+  ): Promise<UserResponseDto> {
+    const { user } = await this.updateUserProfileUseCase.execute({
+      userId: id,
+      ...body,
+    });
+
+    return user;
   }
 
   @Patch(':id/role')
