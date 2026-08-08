@@ -326,7 +326,7 @@ describe('Appointments (e2e)', () => {
       const notification = await notifications.waitFor(
         (candidate) =>
           candidate.recipient === ownerUser.email &&
-          candidate.subject === 'Your ClickBeard appointment was cancelled',
+          candidate.subject === 'Your ClickBeard appointment has been cancelled',
       );
       expect(notification.body).toContain('Barber called in sick');
 
