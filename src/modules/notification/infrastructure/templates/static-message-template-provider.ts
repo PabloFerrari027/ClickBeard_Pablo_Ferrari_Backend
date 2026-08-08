@@ -19,6 +19,26 @@ type TemplatesByLanguage = Record<LanguageCode, MessageTemplate>;
  * `recipientEmail`) simply never reach this provider.
  */
 const TEMPLATES: Record<string, TemplatesByLanguage> = {
+  AppointmentCancelled: {
+    en: {
+      subject: 'Your ClickBeard appointment has been cancelled',
+      body:
+        'Hello, {{name}},\n\n' +
+        'This confirms that your appointment scheduled for {{startAt}} has been cancelled as requested.\n\n' +
+        'Feel free to schedule a new appointment whenever it is convenient for you.\n\n' +
+        'Best regards,\n' +
+        'The ClickBeard Team',
+    },
+    'pt-BR': {
+      subject: 'Seu agendamento na ClickBeard foi cancelado',
+      body:
+        'Olá, {{name}},\n\n' +
+        'Confirmamos que seu agendamento previsto para {{startAt}} foi cancelado, conforme solicitado.\n\n' +
+        'Fique à vontade para agendar um novo horário quando for conveniente.\n\n' +
+        'Atenciosamente,\n' +
+        'Equipe ClickBeard',
+    },
+  },
   UserRegistered: {
     en: {
       subject: 'Welcome to ClickBeard, {{name}}',

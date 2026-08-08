@@ -177,8 +177,8 @@ describe('Appointments (e2e)', () => {
   });
 
   describe('GET /appointments/me, /appointments/:id and cancellation', () => {
-    it('lets the owner see and cancel their own appointment, denies others', async () => {
-      const { session: ownerSession } = await registerAndLogin(
+    it('lets the owner see and cancel their own appointment, denies others, and notifies the owner by email', async () => {
+      const { user: ownerUser, session: ownerSession } = await registerAndLogin(
         app,
         notifications,
       );
@@ -225,6 +225,14 @@ describe('Appointments (e2e)', () => {
         .set(authHeader(ownerSession.accessToken));
       expect(cancel.status).toBe(200);
       expect(cancel.body.status).toBe('CANCELLED');
+
+      const notification = await notifications.waitFor(
+        (candidate) =>
+          candidate.recipient === ownerUser.email &&
+          candidate.subject ===
+            'Your ClickBeard appointment has been cancelled',
+      );
+      expect(notification.body).toContain('cancelled');
     });
   });
 

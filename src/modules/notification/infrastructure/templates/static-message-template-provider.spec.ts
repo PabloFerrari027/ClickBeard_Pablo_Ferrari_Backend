@@ -53,6 +53,7 @@ describe('StaticMessageTemplateProvider', () => {
     'PasswordChanged',
     'VerificationCodeGenerated',
     'UserLoggedIn',
+    'AppointmentCancelled',
     'AppointmentCancelledByAdmin',
   ])(
     'has a template for %s with a non-empty subject and body in both supported languages',

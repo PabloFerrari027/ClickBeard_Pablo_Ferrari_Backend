@@ -107,11 +107,16 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       provide: CancelAppointmentUseCase,
       useFactory: (
         appointmentRepository: AppointmentRepository,
+        userRepository: UserRepository,
         eventBus: EventBus,
         cacheInvalidationService: CacheInvalidationService,
       ) =>
         new CacheInvalidatingUseCase(
-          new CancelAppointmentUseCase(appointmentRepository, eventBus),
+          new CancelAppointmentUseCase(
+            appointmentRepository,
+            userRepository,
+            eventBus,
+          ),
           cacheInvalidationService,
           {
             buildPrefixes: (_input, output) => [
@@ -128,7 +133,12 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
             ],
           },
         ),
-      inject: [APPOINTMENT_REPOSITORY, EVENT_BUS, CACHE_INVALIDATION_SERVICE],
+      inject: [
+        APPOINTMENT_REPOSITORY,
+        USER_REPOSITORY,
+        EVENT_BUS,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: CancelAppointmentByAdminUseCase,
