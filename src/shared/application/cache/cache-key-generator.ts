@@ -12,6 +12,14 @@ export class CacheKeyGenerator {
     return CacheKey.of(`user:${userId}`);
   }
 
+  static usersList(page: number): CacheKey {
+    return CacheKey.of(`users:list:${page}`);
+  }
+
+  static usersListPrefix(): CacheKeyPrefix {
+    return CacheKeyPrefix.of('users:list:');
+  }
+
   static barber(barberId: string): CacheKey {
     return CacheKey.of(`barber:${barberId}`);
   }

@@ -3,7 +3,10 @@ import { InjectModel } from '@nestjs/sequelize';
 
 import { UserAlreadyExistsError } from '../../../core/domain/errors/user-already-exists.error';
 import { User } from '../../../core/domain/entities/user.entity';
-import { UserRepository } from '../../../core/application/ports/user-repository.port';
+import {
+  PaginatedUsers,
+  UserRepository,
+} from '../../../core/application/ports/user-repository.port';
 import { mapToPersistenceError } from '../../../../../shared/database/map-to-persistence-error';
 import { isUniqueConstraintError } from '../../../../../shared/database/sequelize-error.helpers';
 import { TransactionContext } from '../../../../../shared/database/transaction-context';
@@ -50,6 +53,21 @@ export class SequelizeUserRepository implements UserRepository {
       });
 
       return model ? toUserDomain(model) : null;
+    } catch (error) {
+      throw mapToPersistenceError(error);
+    }
+  }
+
+  async findAll(page: number, limit: number): Promise<PaginatedUsers> {
+    try {
+      const { rows, count } = await this.userModel.findAndCountAll({
+        order: [['name', 'ASC']],
+        limit,
+        offset: (page - 1) * limit,
+        transaction: TransactionContext.current(),
+      });
+
+      return { users: rows.map(toUserDomain), total: count };
     } catch (error) {
       throw mapToPersistenceError(error);
     }

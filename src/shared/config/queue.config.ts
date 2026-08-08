@@ -13,13 +13,14 @@ export class QueueConfig {
   constructor(private readonly redisConfig: RedisConfig) {}
 
   createQueueOptions(): QueueOptions {
-    const { host, port, password } = this.redisConfig.getOptions();
+    const { host, port, password, db } = this.redisConfig.getOptions();
 
     return {
       connection: {
         host,
         port,
         password,
+        db,
         maxRetriesPerRequest: null,
       },
     };

@@ -28,6 +28,7 @@ describe('AuthenticateUserUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
     passwordHasher = {
       hash: jest.fn(),

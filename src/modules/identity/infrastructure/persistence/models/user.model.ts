@@ -8,6 +8,7 @@ export interface UserModelAttributes {
   email: string;
   passwordHash: string;
   role: UserRole;
+  birthDate: Date | null;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +39,9 @@ export class UserModel extends Model<UserModelAttributes, UserModelAttributes> {
     defaultValue: UserRole.CLIENT,
   })
   declare role: UserRole;
+
+  @Column({ type: DataType.DATE, allowNull: true })
+  declare birthDate: Date | null;
 
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: true })
   declare active: boolean;

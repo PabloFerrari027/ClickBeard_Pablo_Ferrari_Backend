@@ -5,6 +5,7 @@ export interface UserDto {
   name: string;
   email: string;
   role: UserRole;
+  birthDate?: Date;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;

@@ -48,7 +48,7 @@ ClickBeard é uma API REST para gestão de uma barbearia: cadastro de clientes/b
 - Zero regra de negócio duplicada entre camadas: toda validação vive no Domain (entidades/value objects), nunca em controllers ou DTOs além da validação de shape/tipo.
 - Isolamento estrito entre bounded contexts: nenhum arquivo em `core/` de um módulo importa `infrastructure`/`presentation` de outro módulo.
 - Toda falha de regra de negócio (`DomainError`) é mapeada para o status HTTP correto por um filtro global — nunca cai em 500 genérico.
-- Suite de testes unitários co-localizados (`*.spec.ts` ao lado de cada arquivo) e suite de testes e2e cobrindo as 41 rotas HTTP expostas.
+- Suite de testes unitários co-localizados (`*.spec.ts` ao lado de cada arquivo) e suite de testes e2e cobrindo as 42 rotas HTTP expostas.
 
 ---
 
@@ -228,16 +228,18 @@ ClickBeard_Pablo_Ferrari/
 │       └── utils/                 # Constantes compartilhadas (ex.: MS_PER_DAY)
 ├── database/
 │   ├── config/config.js           # Config lida só pelo sequelize-cli
-│   ├── migrations/                # 9 migrations, uma tabela (ou alteração) por arquivo
+│   ├── migrations/                # 10 migrations, uma tabela (ou alteração) por arquivo
 │   └── seeders/                   # Seeder do admin inicial
 ├── test/
 │   ├── support/                   # Helpers de e2e (bootstrap de app, spy de e-mail, auth)
+│   ├── global-setup.ts            # Roda 1x antes da suíte: limpa e re-semeia o banco de teste
 │   └── *.e2e-spec.ts              # Um arquivo por controller
+├── scripts/create-test-db.js      # Cria o banco clickbeard_test (idempotente)
 ├── .github/workflows/ci.yml       # 4 jobs: test, migrations, e2e, docker
 ├── docker-compose.yml             # app + postgres + redis
 ├── Dockerfile                     # 4 estágios: base, development, build, production
-└── .env.example
-```
+├── .env.example
+└── .env.test                      # Config do banco/infra dedicados à suíte e2e
 
 ### Convenção por camada dentro de um módulo
 
@@ -370,7 +372,7 @@ Todas validadas na inicialização por `EnvConfig` (`src/shared/config/env.confi
 
 ```bash
 npm run docker:up          # sobe app + postgres + redis (build target: development)
-npm run migration:up       # roda as 9 migrations
+npm run migration:up       # roda as 10 migrations
 npm run seed:up            # cria o admin inicial (usa SEED_ADMIN_* do .env)
 npm run docker:logs        # acompanha os logs
 ```
@@ -512,7 +514,7 @@ Nenhum publisher sabe quem consome seu evento — `identity` publica `UserRegist
 
 ## 8. Banco de Dados
 
-**PostgreSQL 17**, acessado via Sequelize apenas pela camada `infrastructure/persistence` de cada módulo. Schema versionado por 9 migrations (`database/migrations/`, `sequelize-cli`).
+**PostgreSQL 17**, acessado via Sequelize apenas pela camada `infrastructure/persistence` de cada módulo. Schema versionado por 10 migrations (`database/migrations/`, `sequelize-cli`).
 
 ### 8.1 Entidades e relacionamentos
 
@@ -535,6 +537,7 @@ erDiagram
         string email UK
         string password_hash
         enum role "CLIENT|BARBER|ADMIN"
+        date birth_date "nullable"
         boolean active
     }
     barbers {
@@ -591,7 +594,7 @@ erDiagram
 
 ### 8.2 Tabelas (na ordem das migrations)
 
-**`users`** — `id UUID PK`, `name`, `email` (índice único `users_email_unique`), `password_hash`, `role ENUM('CLIENT','BARBER','ADMIN')` default `CLIENT` (índice `users_role_idx`), `active BOOLEAN` default `true`, `created_at`, `updated_at`.
+**`users`** — `id UUID PK`, `name`, `email` (índice único `users_email_unique`), `password_hash`, `role ENUM('CLIENT','BARBER','ADMIN')` default `CLIENT` (índice `users_role_idx`), `birth_date DATE` nullable, `active BOOLEAN` default `true`, `created_at`, `updated_at`.
 
 **`qualifications`** — `id UUID PK`, `name` (índice único `qualifications_name_unique`), `description TEXT` opcional, `created_at`, `updated_at`.
 
@@ -824,8 +827,11 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 |---|---|
 | E-mail válido | Regex `^[^\s@]+@[^\s@]+\.[^\s@]+$`, normalizado para minúsculas e trim antes de comparar/persistir |
 | Senha forte | Mínimo 8 caracteres, pelo menos 1 letra e 1 número (`PlainPassword.create`) |
-| Papéis | `CLIENT` (default no cadastro), `BARBER`, `ADMIN` |
-| **`ADMIN` só é criado/promovido por outro `ADMIN`** | `RegisterUserUseCase` exige `requesterId` de um admin existente quando `role=ADMIN`; `ChangeUserRoleUseCase` idem. Sem isso, não existiria forma de criar o primeiro admin — daí o seeder |
+| Papéis | `CLIENT`, `BARBER`, `ADMIN` |
+| **Todo cadastro nasce `CLIENT`** | `RegisterUserUseCase` não aceita `role` — não existe caso de uso dedicado para criar `BARBER` ou `ADMIN` diretamente |
+| **`BARBER`/`ADMIN` só existem por promoção de um `ADMIN`** | `ChangeUserRoleUseCase` (`PATCH /users/:id/role`) é o único caminho para trocar o papel de um usuário, e a rota é `@Auth(UserRole.ADMIN)`. Sem isso, não existiria forma de criar o primeiro admin — daí o seeder |
+| Data de nascimento é opcional | `birthDate` em `RegisterUserRequestDto`/`UpdateUserProfileRequestDto`, validado por `BirthDate` (não pode ser uma data futura) quando informado |
+| Usuário edita seu próprio nome/data de nascimento | `PATCH /users/:id/profile`, self-only (nem admin pode agir por outro usuário aqui) — separado da troca de senha (`PATCH /users/:id/password`, self-or-admin) |
 | Um `ADMIN` nunca pode ser desativado, por ninguém | `User.deactivate()` rejeita incondicionalmente quando `role === ADMIN` (`AdminCannotBeDeactivatedError`), antes mesmo de checar se já está inativo |
 | Trocar para a mesma senha/papel é rejeitado | `SamePasswordError` / `SameUserRoleError` |
 
@@ -944,7 +950,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | Arquivo | Cobre |
 |---|---|
 | `health.e2e-spec.ts` | `GET /health`, `GET /docs` |
-| `users.e2e-spec.ts` | Cadastro, autenticação direta, perfil (`self`/admin), troca de senha, papel, ativar/desativar |
+| `users.e2e-spec.ts` | Cadastro, autenticação direta, perfil (`self`/admin), listagem (admin-only), troca de senha, papel, ativar/desativar |
 | `auth.e2e-spec.ts` | Login (sem sessão), fluxo completo até token, refresh (rotação), logout (revogação) |
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
@@ -952,7 +958,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
 
-**41 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
+**42 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
 
 ```bash
 npm run test:e2e     # jest --config ./test/jest-e2e.json --runInBand --forceExit
@@ -966,12 +972,18 @@ Roda com `--runInBand` (arquivos de spec em série, não em paralelo) por dois m
 
 ### 12.4 Como rodar a suíte e2e localmente
 
+`npm run test:e2e` roda contra um banco **dedicado** (`clickbeard_test`, configurado em `.env.test`), nunca contra o banco de desenvolvimento (`app`, em `.env`) — os dois vivem no mesmo container Postgres subido por `db:up`, mas são bancos lógicos distintos.
+
 ```bash
-npm run db:up          # Postgres + Redis via Docker
-npm run migration:up
-npm run seed:up        # necessário — os testes de rota admin dependem do admin semeado
+npm run db:up           # Postgres + Redis via Docker (compartilhado com o dev)
 npm run test:e2e
 ```
+
+`test:e2e` já cuida do resto sozinho via hooks do npm:
+- `pretest:e2e` cria o banco `clickbeard_test` (idempotente, `scripts/create-test-db.js`) e aplica as migrations nele — nunca no banco de dev.
+- `test/global-setup.ts` roda uma vez antes da suíte: dá `TRUNCATE ... CASCADE` em todas as tabelas e re-semeia o admin (`SEED_ADMIN_*` de `.env.test`). Isso garante que toda execução comece de um estado limpo e determinístico, sem acumular dados de execuções anteriores nem depender de rodar `seed:up` manualmente.
+
+`.env.test` é versionado (só tem credenciais de teste, sem segredos reais) — não precisa ser copiado de um `.example` como `.env`.
 
 ### 12.5 O que ainda não tem teste e2e dedicado
 
@@ -1024,6 +1036,7 @@ npm run test:e2e
 - `AccessTokenGuard` — valida o JWT e popula `request.user`.
 - `RolesGuard` — usado via `@Auth(...roles)`; sem roles declaradas, qualquer usuário autenticado passa.
 - `SelfOrAdminGuard` — usado via `@SelfOrAdmin()`, para rotas `:id` onde o dono da conta ou um admin podem agir (ex.: `GET /users/:id`, `PATCH /users/:id/password`).
+- `SelfGuard` — usado via `@Self()`, para rotas `:id` restritas só ao dono da conta, sem bypass de admin (ex.: `PATCH /users/:id/profile`).
 - Regras adicionais de autorização vivem **na Application**, não só no guard: `ensureRequesterIsAdmin` (reimplementada por módulo, consolidada em `shared/application/policies/`) para operações administrativas dentro de use cases; `GetAppointmentUseCase` permite dono OU admin; `CancelAppointmentUseCase` permite só o dono (nem admin).
 
 ### Criptografia e hashing

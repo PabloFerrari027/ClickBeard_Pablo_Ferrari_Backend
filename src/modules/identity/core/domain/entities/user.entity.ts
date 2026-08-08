@@ -7,6 +7,7 @@ import { SameUserRoleError } from '../errors/same-user-role.error';
 import { UserAlreadyActiveError } from '../errors/user-already-active.error';
 import { UserAlreadyDeactivatedError } from '../errors/user-already-deactivated.error';
 import { UserRole } from '../enums/user-role.enum';
+import { BirthDate } from '../value-objects/birth-date.value-object';
 import { Email } from '../value-objects/email.value-object';
 import { Password } from '../value-objects/password.value-object';
 
@@ -18,6 +19,7 @@ export interface UserProps {
   email: Email;
   password: Password;
   role: UserRole;
+  birthDate?: BirthDate;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +31,7 @@ export class User {
   private email: Email;
   private password: Password;
   private role: UserRole;
+  private birthDate?: BirthDate;
   private active: boolean;
   private readonly createdAt: Date;
   private updatedAt: Date;
@@ -39,6 +42,7 @@ export class User {
     this.email = props.email;
     this.password = props.password;
     this.role = props.role;
+    this.birthDate = props.birthDate;
     this.active = props.active;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
@@ -49,6 +53,7 @@ export class User {
     email: Email;
     password: Password;
     role?: UserRole;
+    birthDate?: string | Date;
   }): User {
     const now = new Date();
 
@@ -58,6 +63,10 @@ export class User {
       email: props.email,
       password: props.password,
       role: props.role ?? UserRole.CLIENT,
+      birthDate:
+        props.birthDate !== undefined
+          ? BirthDate.create(props.birthDate)
+          : undefined,
       active: true,
       createdAt: now,
       updatedAt: now,
@@ -76,6 +85,16 @@ export class User {
     }
 
     return trimmed;
+  }
+
+  changeName(newName: string): void {
+    this.name = User.validateName(newName);
+    this.touch();
+  }
+
+  changeBirthDate(newBirthDate: string | Date): void {
+    this.birthDate = BirthDate.create(newBirthDate);
+    this.touch();
   }
 
   changePassword(newPassword: Password): void {
@@ -140,6 +159,10 @@ export class User {
 
   getRole(): UserRole {
     return this.role;
+  }
+
+  getBirthDate(): BirthDate | undefined {
+    return this.birthDate;
   }
 
   isActive(): boolean {

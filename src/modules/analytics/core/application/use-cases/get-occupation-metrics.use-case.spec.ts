@@ -42,6 +42,7 @@ describe('GetOccupationMetricsUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
     useCase = new GetOccupationMetricsUseCase(
       barberMetricsQuery,

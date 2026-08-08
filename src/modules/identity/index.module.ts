@@ -10,7 +10,9 @@ import { ChangePasswordUseCase } from './core/application/use-cases/change-passw
 import { ChangeUserRoleUseCase } from './core/application/use-cases/change-user-role.use-case';
 import { DeactivateUserUseCase } from './core/application/use-cases/deactivate-user.use-case';
 import { GetUserProfileUseCase } from './core/application/use-cases/get-user-profile.use-case';
+import { ListUsersUseCase } from './core/application/use-cases/list-users.use-case';
 import { RegisterUserUseCase } from './core/application/use-cases/register-user.use-case';
+import { UpdateUserProfileUseCase } from './core/application/use-cases/update-user-profile.use-case';
 import { UserModel } from './infrastructure/persistence/models/user.model';
 import { SequelizeUserRepository } from './infrastructure/persistence/repositories/sequelize-user.repository';
 import { BcryptPasswordHasher } from './infrastructure/security/bcrypt-password-hasher';
@@ -52,8 +54,21 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         userRepository: UserRepository,
         passwordHasher: PasswordHasher,
         eventBus: EventBus,
-      ) => new RegisterUserUseCase(userRepository, passwordHasher, eventBus),
-      inject: [USER_REPOSITORY, PASSWORD_HASHER, EVENT_BUS],
+        cacheInvalidationService: CacheInvalidationService,
+      ) =>
+        new CacheInvalidatingUseCase(
+          new RegisterUserUseCase(userRepository, passwordHasher, eventBus),
+          cacheInvalidationService,
+          {
+            buildPrefixes: () => [CacheKeyGenerator.usersListPrefix()],
+          },
+        ),
+      inject: [
+        USER_REPOSITORY,
+        PASSWORD_HASHER,
+        EVENT_BUS,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     {
       provide: AuthenticateUserUseCase,
@@ -82,6 +97,26 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       inject: [USER_REPOSITORY, CACHE_MANAGER, CACHE_POLICY],
     },
     {
+      provide: ListUsersUseCase,
+      useFactory: (
+        userRepository: UserRepository,
+        cacheManager: CacheManager,
+        cachePolicy: CachePolicy,
+      ) =>
+        new CachedUseCase(
+          new ListUsersUseCase(userRepository),
+          cacheManager,
+          cachePolicy,
+          {
+            resource: CacheResource.USERS_LIST,
+            // Mirrors ListUsersUseCase's own DEFAULT_PAGE, so an
+            // omitted page and an explicit page=1 share one cache entry.
+            buildKey: (input) => CacheKeyGenerator.usersList(input.page ?? 1),
+          },
+        ),
+      inject: [USER_REPOSITORY, CACHE_MANAGER, CACHE_POLICY],
+    },
+    {
       provide: ChangePasswordUseCase,
       useFactory: (
         userRepository: UserRepository,
@@ -104,6 +139,22 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       ],
     },
     {
+      provide: UpdateUserProfileUseCase,
+      useFactory: (
+        userRepository: UserRepository,
+        cacheInvalidationService: CacheInvalidationService,
+      ) =>
+        new CacheInvalidatingUseCase(
+          new UpdateUserProfileUseCase(userRepository),
+          cacheInvalidationService,
+          {
+            buildKeys: (input) => [CacheKeyGenerator.userProfile(input.userId)],
+            buildPrefixes: () => [CacheKeyGenerator.usersListPrefix()],
+          },
+        ),
+      inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
+    },
+    {
       provide: ChangeUserRoleUseCase,
       useFactory: (
         userRepository: UserRepository,
@@ -114,6 +165,7 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
           cacheInvalidationService,
           {
             buildKeys: (input) => [CacheKeyGenerator.userProfile(input.userId)],
+            buildPrefixes: () => [CacheKeyGenerator.usersListPrefix()],
           },
         ),
       inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
@@ -129,6 +181,7 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
           cacheInvalidationService,
           {
             buildKeys: (input) => [CacheKeyGenerator.userProfile(input.userId)],
+            buildPrefixes: () => [CacheKeyGenerator.usersListPrefix()],
           },
         ),
       inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
@@ -144,6 +197,7 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
           cacheInvalidationService,
           {
             buildKeys: (input) => [CacheKeyGenerator.userProfile(input.userId)],
+            buildPrefixes: () => [CacheKeyGenerator.usersListPrefix()],
           },
         ),
       inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],

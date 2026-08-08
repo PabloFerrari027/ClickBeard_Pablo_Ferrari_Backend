@@ -2,8 +2,14 @@ import { User } from '../../domain/entities/user.entity';
 
 export const USER_REPOSITORY = Symbol('UserRepository');
 
+export interface PaginatedUsers {
+  users: User[];
+  total: number;
+}
+
 export interface UserRepository {
   save(user: User): Promise<void>;
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
+  findAll(page: number, limit: number): Promise<PaginatedUsers>;
 }

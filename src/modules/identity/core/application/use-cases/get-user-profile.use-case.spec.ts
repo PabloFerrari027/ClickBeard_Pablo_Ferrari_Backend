@@ -15,6 +15,7 @@ describe('GetUserProfileUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
     useCase = new GetUserProfileUseCase(userRepository);
   });

@@ -1,14 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsDateString,
   IsEmail,
-  IsEnum,
   IsOptional,
   IsString,
-  IsUUID,
   MinLength,
 } from 'class-validator';
-
-import { UserRole } from '../../core/domain/enums/user-role.enum';
 
 export class RegisterUserRequestDto {
   @ApiProperty({ example: 'John Doe' })
@@ -25,16 +22,8 @@ export class RegisterUserRequestDto {
   @MinLength(8)
   password: string;
 
-  @ApiPropertyOptional({ enum: UserRole, default: UserRole.CLIENT })
+  @ApiPropertyOptional({ example: '1995-05-20' })
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
-
-  @ApiPropertyOptional({
-    description:
-      'Id of the admin performing the request — required when role is ADMIN',
-  })
-  @IsOptional()
-  @IsUUID()
-  requesterId?: string;
+  @IsDateString()
+  birthDate?: string;
 }

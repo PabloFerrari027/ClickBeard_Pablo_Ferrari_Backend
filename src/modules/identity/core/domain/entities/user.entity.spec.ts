@@ -1,10 +1,12 @@
 import { AdminCannotBeDeactivatedError } from '../errors/admin-cannot-be-deactivated.error';
+import { InvalidBirthDateError } from '../errors/invalid-birth-date.error';
 import { InvalidNameError } from '../errors/invalid-name.error';
 import { SamePasswordError } from '../errors/same-password.error';
 import { SameUserRoleError } from '../errors/same-user-role.error';
 import { UserAlreadyActiveError } from '../errors/user-already-active.error';
 import { UserAlreadyDeactivatedError } from '../errors/user-already-deactivated.error';
 import { UserRole } from '../enums/user-role.enum';
+import { BirthDate } from '../value-objects/birth-date.value-object';
 import { Email } from '../value-objects/email.value-object';
 import { Password } from '../value-objects/password.value-object';
 import { User, UserProps } from './user.entity';
@@ -44,6 +46,29 @@ describe('User', () => {
       expect(user.isActive()).toBe(true);
       expect(user.getId()).toBeTruthy();
       expect(user.getCreatedAt()).toEqual(user.getUpdatedAt());
+      expect(user.getBirthDate()).toBeUndefined();
+    });
+
+    it('creates a user with the given birth date when provided', () => {
+      const user = User.create({
+        name: 'Jane Doe',
+        email: Email.create('jane@example.com'),
+        password: Password.fromHash('hashed-password'),
+        birthDate: '1995-05-20',
+      });
+
+      expect(user.getBirthDate()?.getValue()).toEqual(new Date('1995-05-20'));
+    });
+
+    it('throws InvalidBirthDateError for a birth date in the future', () => {
+      expect(() =>
+        User.create({
+          name: 'Jane Doe',
+          email: Email.create('jane@example.com'),
+          password: Password.fromHash('hashed-password'),
+          birthDate: '2999-01-01',
+        }),
+      ).toThrow(InvalidBirthDateError);
     });
 
     it('creates a user with the given role when provided', () => {
@@ -102,6 +127,48 @@ describe('User', () => {
       expect(user.isActive()).toBe(props.active);
       expect(user.getCreatedAt()).toBe(props.createdAt);
       expect(user.getUpdatedAt()).toBe(props.updatedAt);
+    });
+  });
+
+  describe('changeName', () => {
+    it('replaces the name and updates updatedAt', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const user = User.restore(buildProps());
+
+      jest.setSystemTime(new Date('2026-01-02T00:00:00.000Z'));
+      user.changeName('  New Name  ');
+
+      expect(user.getName()).toBe('New Name');
+      expect(user.getUpdatedAt()).toEqual(new Date('2026-01-02T00:00:00.000Z'));
+    });
+
+    it('throws InvalidNameError when the trimmed name is shorter than 2 characters', () => {
+      const user = User.restore(buildProps());
+
+      expect(() => user.changeName(' J ')).toThrow(InvalidNameError);
+    });
+  });
+
+  describe('changeBirthDate', () => {
+    it('replaces the birth date and updates updatedAt', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const user = User.restore(buildProps());
+
+      jest.setSystemTime(new Date('2026-01-02T00:00:00.000Z'));
+      user.changeBirthDate('1995-05-20');
+
+      expect(user.getBirthDate()?.equals(BirthDate.create('1995-05-20'))).toBe(
+        true,
+      );
+      expect(user.getUpdatedAt()).toEqual(new Date('2026-01-02T00:00:00.000Z'));
+    });
+
+    it('throws InvalidBirthDateError for a birth date in the future', () => {
+      const user = User.restore(buildProps());
+
+      expect(() => user.changeBirthDate('2999-01-01')).toThrow(
+        InvalidBirthDateError,
+      );
     });
   });
 

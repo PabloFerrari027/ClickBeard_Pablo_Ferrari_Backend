@@ -55,6 +55,7 @@ describe('CreateBarberUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
     useCase = new CreateBarberUseCase(
       barberRepository,
@@ -64,13 +65,10 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('creates a barber and returns its dto', async () => {
-    userRepository.findById.mockImplementation((id: string) =>
-      Promise.resolve(
-        id === 'admin-id'
-          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildUser(),
-      ),
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
     );
+    userRepository.findByEmail.mockResolvedValue(buildUser());
     barberRepository.findById.mockResolvedValue(null);
     qualificationRepository.findById.mockResolvedValue(
       Qualification.create({ name: 'Beard Trim' }),
@@ -78,7 +76,7 @@ describe('CreateBarberUseCase', () => {
 
     const result = await useCase.execute({
       requesterId: 'admin-id',
-      userId: 'user-id',
+      email: 'user-id@example.com',
       age: 30,
       hiredAt: new Date('2025-01-01T00:00:00.000Z'),
       qualificationIds: ['qualification-id', 'qualification-id'],
@@ -98,7 +96,7 @@ describe('CreateBarberUseCase', () => {
     await expect(
       useCase.execute({
         requesterId: 'admin-id',
-        userId: 'user-id',
+        email: 'user-id@example.com',
         age: 30,
         hiredAt: new Date('2025-01-01T00:00:00.000Z'),
         qualificationIds: ['qualification-id'],
@@ -108,18 +106,15 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws UserNotFoundError when the target user does not exist', async () => {
-    userRepository.findById.mockImplementation((id: string) =>
-      Promise.resolve(
-        id === 'admin-id'
-          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
-          : null,
-      ),
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
     );
+    userRepository.findByEmail.mockResolvedValue(null);
 
     await expect(
       useCase.execute({
         requesterId: 'admin-id',
-        userId: 'missing-user-id',
+        email: 'missing-user-id@example.com',
         age: 30,
         hiredAt: new Date('2025-01-01T00:00:00.000Z'),
         qualificationIds: ['qualification-id'],
@@ -128,18 +123,17 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws UserIsNotBarberError when the target user does not have the BARBER role', async () => {
-    userRepository.findById.mockImplementation((id: string) =>
-      Promise.resolve(
-        id === 'admin-id'
-          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildUser({ role: UserRole.CLIENT }),
-      ),
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
+    );
+    userRepository.findByEmail.mockResolvedValue(
+      buildUser({ role: UserRole.CLIENT }),
     );
 
     await expect(
       useCase.execute({
         requesterId: 'admin-id',
-        userId: 'user-id',
+        email: 'user-id@example.com',
         age: 30,
         hiredAt: new Date('2025-01-01T00:00:00.000Z'),
         qualificationIds: ['qualification-id'],
@@ -148,13 +142,10 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws BarberAlreadyExistsError when a barber profile already exists for the user', async () => {
-    userRepository.findById.mockImplementation((id: string) =>
-      Promise.resolve(
-        id === 'admin-id'
-          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildUser(),
-      ),
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
     );
+    userRepository.findByEmail.mockResolvedValue(buildUser());
     barberRepository.findById.mockResolvedValue(
       Barber.create({
         userId: 'user-id',
@@ -168,7 +159,7 @@ describe('CreateBarberUseCase', () => {
     await expect(
       useCase.execute({
         requesterId: 'admin-id',
-        userId: 'user-id',
+        email: 'user-id@example.com',
         age: 30,
         hiredAt: new Date('2025-01-01T00:00:00.000Z'),
         qualificationIds: ['qualification-id'],
@@ -177,20 +168,17 @@ describe('CreateBarberUseCase', () => {
   });
 
   it('throws QualificationNotFoundError when a qualification does not exist', async () => {
-    userRepository.findById.mockImplementation((id: string) =>
-      Promise.resolve(
-        id === 'admin-id'
-          ? buildUser({ id: 'admin-id', role: UserRole.ADMIN })
-          : buildUser(),
-      ),
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
     );
+    userRepository.findByEmail.mockResolvedValue(buildUser());
     barberRepository.findById.mockResolvedValue(null);
     qualificationRepository.findById.mockResolvedValue(null);
 
     await expect(
       useCase.execute({
         requesterId: 'admin-id',
-        userId: 'user-id',
+        email: 'user-id@example.com',
         age: 30,
         hiredAt: new Date('2025-01-01T00:00:00.000Z'),
         qualificationIds: ['missing-qualification-id'],

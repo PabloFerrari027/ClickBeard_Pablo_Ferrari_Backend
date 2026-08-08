@@ -26,9 +26,9 @@ import { CACHE_POLICY } from '../application/ports/cache-policy.port';
     {
       provide: REDIS_CLIENT,
       useFactory: (redisConfig: RedisConfig) => {
-        const { host, port, password } = redisConfig.getOptions();
+        const { host, port, password, db } = redisConfig.getOptions();
 
-        return new Redis({ host, port, password, lazyConnect: false });
+        return new Redis({ host, port, password, db, lazyConnect: false });
       },
       inject: [RedisConfig],
     },

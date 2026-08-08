@@ -88,6 +88,12 @@ export class EnvConfig {
   private readonly REDIS_PASSWORD: string | undefined =
     process.env.REDIS_PASSWORD || undefined;
 
+  /** Redis logical database index (0-15) — lets dev/test share one Redis server without sharing a keyspace. */
+  @IsInt()
+  @Min(0)
+  @Max(15)
+  private readonly REDIS_DB: number = Number(process.env.REDIS_DB ?? 0);
+
   @IsString()
   @IsNotEmpty()
   private readonly JWT_ACCESS_SECRET: string = process.env
@@ -233,6 +239,10 @@ export class EnvConfig {
 
   get redisPassword(): string | undefined {
     return this.REDIS_PASSWORD;
+  }
+
+  get redisDb(): number {
+    return this.REDIS_DB;
   }
 
   get jwtAccessSecret(): string {
