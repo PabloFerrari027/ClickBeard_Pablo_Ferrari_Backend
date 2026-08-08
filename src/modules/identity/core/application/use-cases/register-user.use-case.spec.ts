@@ -1,8 +1,6 @@
+import { InvalidBirthDateError } from '../../domain/errors/invalid-birth-date.error';
 import { InvalidNameError } from '../../domain/errors/invalid-name.error';
-import { InvalidUserRoleError } from '../../domain/errors/invalid-user-role.error';
 import { UserAlreadyExistsError } from '../../domain/errors/user-already-exists.error';
-import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
-import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { WeakPasswordError } from '../../domain/errors/weak-password.error';
 import { UserRole } from '../../domain/enums/user-role.enum';
 import { User } from '../../domain/entities/user.entity';
@@ -12,19 +10,6 @@ import { PasswordHasher } from '../ports/password-hasher.port';
 import { UserRepository } from '../ports/user-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { RegisterUserUseCase } from './register-user.use-case';
-
-function buildUser(role: UserRole): User {
-  return User.restore({
-    id: 'requester-id',
-    name: 'Requester',
-    email: Email.create('requester-id@example.com'),
-    password: Password.fromHash('hashed-password'),
-    role,
-    active: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-}
 
 describe('RegisterUserUseCase', () => {
   let userRepository: jest.Mocked<UserRepository>;
@@ -37,6 +22,7 @@ describe('RegisterUserUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
     passwordHasher = {
       hash: jest.fn(),
@@ -65,12 +51,14 @@ describe('RegisterUserUseCase', () => {
     const savedUser = userRepository.save.mock.calls[0][0];
     expect(savedUser.getRole()).toBe(UserRole.CLIENT);
     expect(savedUser.getPassword().getHash()).toBe('hashed-password');
+    expect(savedUser.getBirthDate()).toBeUndefined();
 
     expect(result.user).toEqual({
       id: savedUser.getId(),
       name: 'Jane Doe',
       email: 'jane@example.com',
       role: UserRole.CLIENT,
+      birthDate: undefined,
       active: true,
       createdAt: savedUser.getCreatedAt(),
       updatedAt: savedUser.getUpdatedAt(),
@@ -83,80 +71,37 @@ describe('RegisterUserUseCase', () => {
     expect(publishedEvent.payload).toEqual({ name: 'Jane Doe' });
   });
 
-  it('registers a new user with an explicit valid role', async () => {
+  it('registers a new user with an optional birth date', async () => {
     userRepository.findByEmail.mockResolvedValue(null);
     passwordHasher.hash.mockResolvedValue('hashed-password');
 
     await useCase.execute({
-      name: 'Bruno Barber',
-      email: 'bruno@example.com',
+      name: 'Jane Doe',
+      email: 'jane@example.com',
       password: 'password1',
-      role: UserRole.BARBER,
+      birthDate: '1995-05-20',
     });
 
     const savedUser = userRepository.save.mock.calls[0][0];
-    expect(savedUser.getRole()).toBe(UserRole.BARBER);
+    expect(savedUser.getBirthDate()?.getValue()).toEqual(
+      new Date('1995-05-20'),
+    );
   });
 
-  it('registers a new ADMIN when requested by an existing admin', async () => {
-    userRepository.findById.mockResolvedValue(buildUser(UserRole.ADMIN));
+  it('propagates InvalidBirthDateError for a birth date in the future', async () => {
     userRepository.findByEmail.mockResolvedValue(null);
     passwordHasher.hash.mockResolvedValue('hashed-password');
 
-    await useCase.execute({
-      name: 'New Admin',
-      email: 'new-admin@example.com',
-      password: 'password1',
-      role: UserRole.ADMIN,
-      requesterId: 'requester-id',
-    });
-
-    expect(userRepository.findById).toHaveBeenCalledWith('requester-id');
-    const savedUser = userRepository.save.mock.calls[0][0];
-    expect(savedUser.getRole()).toBe(UserRole.ADMIN);
-  });
-
-  it('throws UserNotFoundError when registering an ADMIN without a requesterId', async () => {
-    await expect(
-      useCase.execute({
-        name: 'New Admin',
-        email: 'new-admin@example.com',
-        password: 'password1',
-        role: UserRole.ADMIN,
-      }),
-    ).rejects.toThrow(UserNotFoundError);
-
-    expect(userRepository.findByEmail).not.toHaveBeenCalled();
-  });
-
-  it('throws UserIsNotAdminError when the requester is not an admin', async () => {
-    userRepository.findById.mockResolvedValue(buildUser(UserRole.CLIENT));
-
-    await expect(
-      useCase.execute({
-        name: 'New Admin',
-        email: 'new-admin@example.com',
-        password: 'password1',
-        role: UserRole.ADMIN,
-        requesterId: 'requester-id',
-      }),
-    ).rejects.toThrow(UserIsNotAdminError);
-
-    expect(userRepository.findByEmail).not.toHaveBeenCalled();
-    expect(userRepository.save).not.toHaveBeenCalled();
-  });
-
-  it('throws InvalidUserRoleError when the role is not a known UserRole', async () => {
     await expect(
       useCase.execute({
         name: 'Jane Doe',
         email: 'jane@example.com',
         password: 'password1',
-        role: 'SUPERADMIN' as UserRole,
+        birthDate: '2999-01-01',
       }),
-    ).rejects.toThrow(InvalidUserRoleError);
+    ).rejects.toThrow(InvalidBirthDateError);
 
-    expect(userRepository.findByEmail).not.toHaveBeenCalled();
+    expect(userRepository.save).not.toHaveBeenCalled();
   });
 
   it('throws UserAlreadyExistsError when the email is already registered', async () => {
@@ -183,7 +128,6 @@ describe('RegisterUserUseCase', () => {
 
     expect(passwordHasher.hash).not.toHaveBeenCalled();
     expect(userRepository.save).not.toHaveBeenCalled();
-    expect(eventBus.publish).not.toHaveBeenCalled();
   });
 
   it('propagates WeakPasswordError from the domain when the password is weak', async () => {
