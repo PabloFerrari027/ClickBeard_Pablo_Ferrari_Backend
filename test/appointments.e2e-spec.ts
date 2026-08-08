@@ -146,6 +146,36 @@ describe('Appointments (e2e)', () => {
     });
   });
 
+  describe('Barbers booking with other barbers', () => {
+    it('lets a BARBER-role user book an appointment with another barber and list it via /me', async () => {
+      const { user: barberUser, session: barberSession } =
+        await registerAndLogin(app, notifications);
+      await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
+
+      const startAt = await findBookableSlot(barberSession.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(barberSession.accessToken))
+        .send({ barberId, qualificationId, startAt });
+
+      expect(created.status).toBe(201);
+      expect(created.body.customerId).toBe(barberUser.id);
+      expect(created.body.barberId).toBe(barberId);
+
+      const mine = await request(app.getHttpServer())
+        .get('/appointments/me')
+        .set(authHeader(barberSession.accessToken));
+
+      expect(mine.status).toBe(200);
+      expect(mine.body.appointments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: created.body.id, barberId }),
+        ]),
+      );
+    });
+  });
+
   describe('GET /appointments/me, /appointments/:id and cancellation', () => {
     it('lets the owner see and cancel their own appointment, denies others', async () => {
       const { session: ownerSession } = await registerAndLogin(

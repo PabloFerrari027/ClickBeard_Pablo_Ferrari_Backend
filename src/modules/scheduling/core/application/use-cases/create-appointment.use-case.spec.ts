@@ -20,13 +20,13 @@ import { TransactionManager } from '../ports/transaction-manager.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { CreateAppointmentUseCase } from './create-appointment.use-case';
 
-function buildCustomer(active = true): User {
+function buildCustomer(active = true, role: UserRole = UserRole.CLIENT): User {
   return User.restore({
     id: 'customer-id',
     name: 'Jane Doe',
     email: Email.create('customer-id@example.com'),
     password: Password.fromHash('hashed-password'),
-    role: UserRole.CLIENT,
+    role,
     active,
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),
@@ -123,6 +123,18 @@ describe('CreateAppointmentUseCase', () => {
 
     expect(eventBus.publish).toHaveBeenCalledTimes(1);
     expect(eventBus.publish.mock.calls[0][0].name).toBe('AppointmentCreated');
+  });
+
+  it('allows a customer with the BARBER role to book an appointment with another barber', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildCustomer(true, UserRole.BARBER),
+    );
+
+    const result = await useCase.execute(validInput);
+
+    expect(appointmentRepository.save).toHaveBeenCalledTimes(1);
+    expect(result.appointment.customerId).toBe('customer-id');
+    expect(result.appointment.barberId).toBe('barber-id');
   });
 
   it('throws UserNotFoundError when the customer does not exist or is inactive', async () => {

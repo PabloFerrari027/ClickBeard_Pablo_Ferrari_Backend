@@ -891,6 +891,8 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | **Aviso mínimo de 2 horas**, simétrico | `MIN_APPOINTMENT_NOTICE_MS = 2h` — se aplica tanto para **reservar** (`AppointmentTooSoonError`) quanto para **cancelar** (`CancellationWindowExpiredError`) um horário |
 | Sem double-booking | Checado na Application (`AvailabilityService.isBarberAvailable`, dentro de uma transação) **e** garantido no banco pelo índice único parcial (seção 8.3) — dupla camada de proteção |
 | Barbeiro precisa ter a qualificação pedida | `BarberDoesNotHaveQualificationError` |
+| **Um `BARBER` pode reservar um horário com outro `BARBER`** | `POST /appointments` é `@Auth()` sem restrição de papel — `customerId` é sempre o requester autenticado, e `CreateAppointmentUseCase` só exige que ele exista e esteja ativo (`UserNotFoundError` senão), sem checar `role`. Um usuário com `role=BARBER` age como cliente normalmente ao reservar com qualquer outro barbeiro |
+| **Um `BARBER` lista/gerencia seus próprios agendamentos como cliente normalmente** | `GET /appointments/me` (`ListCustomerAppointmentsUseCase`) e `GET /appointments/:id`/`DELETE /appointments/:id` filtram só por `customerId === requester.id`, nunca por papel — inclui agendamentos feitos com outros barbeiros |
 | Cancelamento pelo cliente é só do próprio agendamento | `CancelAppointmentUseCase` (`DELETE /appointments/:id`) não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento; continua respeitando a janela mínima de 2h |
 | **ADMIN pode cancelar qualquer agendamento, com motivo obrigatório** | `CancelAppointmentByAdminUseCase` (`PATCH /appointments/:id/cancel`) — **ignora** a janela mínima de 2h (`cancelByAdmin`, distinto de `cancel`), motivo obrigatório (`CancellationReasonRequiredError` senão) persistido em `cancellation_reason`, cliente notificado por e-mail (`AppointmentCancelledByAdminEvent`) |
 | Não é possível reservar um horário em que o barbeiro está marcado como indisponível | `BarberUnavailableError` (409, distinto de `BarberTimeSlotConflictError`) — checado via `AvailabilityService.isBarberUnavailable` dentro da mesma transação da checagem de conflito |
@@ -958,7 +960,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
-| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin |
+| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, `BARBER` reservando com outro `BARBER` e listando via `/me` |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
 
 **42 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
