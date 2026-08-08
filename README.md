@@ -364,6 +364,7 @@ Todas validadas na inicialização por `EnvConfig` (`src/shared/config/env.confi
 | `SMTP_PORT` | não | `587` | — |
 | `SMTP_USER` / `SMTP_PASSWORD` | não | — | — |
 | `SMTP_SECURE` | não | `false` | — |
+| `SYSTEM_LANGUAGE` | não | `en` (fallback) | Idioma dos e-mails transacionais — só `pt-BR` (e variantes como `pt`/`pt_BR`) é reconhecido como alternativa; qualquer outro valor, ou ausente, cai em `en` |
 | `CORS_ORIGIN` | não | `*` | `*` ou lista separada por vírgula |
 | `THROTTLE_TTL_MS` / `THROTTLE_LIMIT` | não | `60000` / `100` | Janela e limite do rate limiter global |
 | `SEED_ADMIN_NAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | apenas para `seed:up` | — | **Não lidas pela aplicação em runtime** — só pelo seeder do admin inicial |
@@ -720,6 +721,8 @@ Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consu
 | `BarberUnavailabilityCreated` | `CreateBarberUnavailabilityUseCase` | `{ unavailabilityId, barberId, startAt, endAt, reason }` | não | `scheduling` (`BarberUnavailabilityCreatedConsumer`, cancela em cascata todo agendamento `SCHEDULED` do barbeiro que caia dentro do período) |
 
 Eventos sem `recipientEmail` ou sem template cadastrado em `StaticMessageTemplateProvider` simplesmente não geram e-mail — `DispatchNotificationUseCase` faz no-op nesses casos por design, não é uma lacuna.
+
+Todo e-mail transacional é enviado nos dois formatos simultaneamente: `text` (corpo puro do template) e `html` (`renderBrandedEmailHtml`, layout table-based com estilos inline embutidos — a única abordagem que renderiza de forma consistente em clientes como o Outlook, que ignoram CSS moderno e removem blocos `<style>`; sem assets externos, para não depender de imagem/webfont remota). O idioma é resolvido por `DefaultLanguageResolver` a partir de `SYSTEM_LANGUAGE` (seção 5.3) — hoje uma configuração única por deployment, não por destinatário, porque `User` ainda não tem um campo de idioma/locale e o disparo acontece num consumer de fila, sem request HTTP para ler um `Accept-Language`. `StaticMessageTemplateProvider` guarda um par de templates (`en`/`pt-BR`) por evento; qualquer idioma não reconhecido cai em `en` (`DEFAULT_LANGUAGE`).
 
 ### 10.2 Fluxo completo: login → verificação → sessão
 

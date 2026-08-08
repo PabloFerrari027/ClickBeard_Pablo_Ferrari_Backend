@@ -6,9 +6,9 @@ import { VerificationCodeRepository } from '../ports/verification-code-repositor
 import { UseCase } from '../../../../../shared/application/use-case';
 
 /**
- * Maintenance use case for a future scheduler: sweeps codes that expired
- * without being consumed and marks them invalidated so they can no
- * longer be matched by findActiveByUserId.
+ * Maintenance use case run by ExpiredCodesSweepScheduler: sweeps codes
+ * that expired without being consumed and marks them invalidated so they
+ * can no longer be matched by findActiveByUserId.
  */
 export class InvalidateExpiredVerificationCodesUseCase implements UseCase<
   InvalidateExpiredVerificationCodesInputDto,
