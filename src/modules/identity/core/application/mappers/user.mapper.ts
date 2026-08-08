@@ -7,6 +7,7 @@ export function toUserDto(user: User): UserDto {
     name: user.getName(),
     email: user.getEmail().getValue(),
     role: user.getRole(),
+    birthDate: user.getBirthDate()?.getValue(),
     active: user.isActive(),
     createdAt: user.getCreatedAt(),
     updatedAt: user.getUpdatedAt(),
