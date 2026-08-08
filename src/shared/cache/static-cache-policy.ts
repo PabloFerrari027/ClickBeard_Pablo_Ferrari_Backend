@@ -14,6 +14,7 @@ const ONE_HOUR = 60 * ONE_MINUTE;
  */
 const TTL_SECONDS_BY_RESOURCE: Record<CacheResource, number> = {
   [CacheResource.USER_PROFILE]: 5 * ONE_MINUTE,
+  [CacheResource.USERS_LIST]: 5 * ONE_MINUTE,
   [CacheResource.BARBER]: 5 * ONE_MINUTE,
   [CacheResource.BARBERS_LIST]: 5 * ONE_MINUTE,
   [CacheResource.QUALIFICATIONS]: 15 * ONE_MINUTE,
