@@ -29,7 +29,10 @@ export interface RegisterOverrides {
 
 const DEFAULT_PASSWORD = 'Password123';
 const VERIFICATION_CODE_SUBJECT = 'Your ClickBeard verification code';
-const CODE_PATTERN = /verification code is (\S+)\./;
+// Verification codes are always 6 numeric digits (see
+// RandomVerificationCodeGenerator), so matching on digit shape is more
+// robust than pinning to the surrounding template wording.
+const CODE_PATTERN = /\b(\d{6})\b/;
 
 export function uniqueEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
@@ -84,7 +87,7 @@ export async function promoteUser(
     .expect(200);
 }
 
-function extractVerificationCode(body: string): string {
+export function extractVerificationCode(body: string): string {
   const match = CODE_PATTERN.exec(body);
 
   if (!match) {

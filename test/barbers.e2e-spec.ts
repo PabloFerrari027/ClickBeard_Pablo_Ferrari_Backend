@@ -464,7 +464,7 @@ describe('Barbers (e2e)', () => {
       const notification = await notifications.waitFor(
         (candidate) =>
           candidate.recipient === customer.email &&
-          candidate.subject === 'Your ClickBeard appointment was cancelled',
+          candidate.subject === 'Your ClickBeard appointment has been cancelled',
       );
       expect(notification.body).toContain('Sick leave');
     });

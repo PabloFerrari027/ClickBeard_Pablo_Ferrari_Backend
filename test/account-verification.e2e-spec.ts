@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
-import { registerUser } from './support/api.helpers';
+import { extractVerificationCode, registerUser } from './support/api.helpers';
 import { NotificationSenderSpy } from './support/notification-sender.spy';
 import { createTestApp } from './support/test-app';
 
@@ -66,7 +66,7 @@ describe('Account Verification (e2e)', () => {
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
       );
-      const code = /verification code is (\S+)\./.exec(notification.body)![1];
+      const code = extractVerificationCode(notification.body);
 
       const response = await request(app.getHttpServer())
         .post('/account-verification/validate')
@@ -99,7 +99,7 @@ describe('Account Verification (e2e)', () => {
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
       );
-      const code = /verification code is (\S+)\./.exec(notification.body)![1];
+      const code = extractVerificationCode(notification.body);
 
       await request(app.getHttpServer())
         .post('/account-verification/validate')
@@ -126,9 +126,7 @@ describe('Account Verification (e2e)', () => {
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
       );
-      const firstCode = /verification code is (\S+)\./.exec(
-        firstNotification.body,
-      )![1];
+      const firstCode = extractVerificationCode(firstNotification.body);
 
       const resendResponse = await request(app.getHttpServer())
         .post('/account-verification/resend')
@@ -142,9 +140,7 @@ describe('Account Verification (e2e)', () => {
           n.subject === 'Your ClickBeard verification code' &&
           n.body !== firstNotification.body,
       );
-      const secondCode = /verification code is (\S+)\./.exec(
-        secondNotification.body,
-      )![1];
+      const secondCode = extractVerificationCode(secondNotification.body);
 
       expect(secondCode).not.toBe(firstCode);
 
