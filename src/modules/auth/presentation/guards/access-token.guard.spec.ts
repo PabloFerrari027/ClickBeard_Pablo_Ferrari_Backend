@@ -57,6 +57,7 @@ describe('AccessTokenGuard', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
     guard = new AccessTokenGuard(tokenProvider, userRepository);
   });

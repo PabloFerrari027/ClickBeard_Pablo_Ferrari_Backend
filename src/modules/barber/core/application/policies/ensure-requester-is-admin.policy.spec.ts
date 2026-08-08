@@ -28,6 +28,7 @@ describe('ensureRequesterIsAdmin', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findAll: jest.fn(),
     };
   });
 
