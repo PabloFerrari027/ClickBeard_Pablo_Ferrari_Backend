@@ -6,6 +6,7 @@ export interface RedisConnectionOptions {
   host: string;
   port: number;
   password?: string;
+  db: number;
 }
 
 /** Framework/library-agnostic Redis connection options, resolved from `EnvConfig`. */
@@ -18,6 +19,7 @@ export class RedisConfig {
       host: this.envConfig.redisHost,
       port: this.envConfig.redisPort,
       password: this.envConfig.redisPassword,
+      db: this.envConfig.redisDb,
     };
   }
 }
