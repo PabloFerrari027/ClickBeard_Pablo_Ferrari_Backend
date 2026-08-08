@@ -71,6 +71,12 @@ describe('CacheKeyGenerator', () => {
     ).toBe('time-slots:barber-1:2026-08-06:');
   });
 
+  it('formats the all-dates time slots prefix for a barber', () => {
+    expect(
+      CacheKeyGenerator.barberAllTimeSlotsPrefix('barber-1').toString(),
+    ).toBe('time-slots:barber-1:');
+  });
+
   it('builds dashboard and generic metrics keys', () => {
     expect(CacheKeyGenerator.dashboardMetrics('MONTH').toString()).toBe(
       'dashboard:MONTH',

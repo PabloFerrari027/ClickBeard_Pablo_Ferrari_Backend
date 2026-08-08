@@ -3,6 +3,7 @@ import { AppointmentTooSoonError } from '../../domain/errors/appointment-too-soo
 import { BarberDoesNotHaveQualificationError } from '../../domain/errors/barber-does-not-have-qualification.error';
 import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error';
 import { BarberTimeSlotConflictError } from '../../domain/errors/barber-time-slot-conflict.error';
+import { BarberUnavailableError } from '../../domain/errors/barber-unavailable.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import {
   Appointment,
@@ -65,6 +66,16 @@ export class CreateAppointmentUseCase implements UseCase<
 
     const appointment = await this.transactionManager.runInTransaction(
       async () => {
+        const isUnavailable =
+          await this.availabilityService.isBarberUnavailable(
+            input.barberId,
+            timeSlot,
+          );
+
+        if (isUnavailable) {
+          throw new BarberUnavailableError();
+        }
+
         const isAvailable = await this.availabilityService.isBarberAvailable(
           input.barberId,
           timeSlot,

@@ -241,4 +241,169 @@ describe('Appointments (e2e)', () => {
       );
     });
   });
+
+  describe('PATCH /appointments/:id/cancel', () => {
+    it('rejects an unauthenticated request with 401', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/appointments/00000000-0000-0000-0000-000000000000/cancel')
+        .send({ reason: 'Barber is sick' });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects a non-admin with 403', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(ownerSession.accessToken))
+        .send({ reason: 'Barber is sick' });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('rejects a missing/too short reason with 400', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'x' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 404 for a non-existent appointment', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/appointments/00000000-0000-0000-0000-000000000000/cancel')
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'Barber is sick' });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('lets an admin cancel any appointment with a reason, bypassing the 2h window, and notifies the customer by email', async () => {
+      const { user: ownerUser, session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'Barber called in sick' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('CANCELLED');
+      expect(response.body.cancellationReason).toBe('Barber called in sick');
+
+      const notification = await notifications.waitFor(
+        (candidate) =>
+          candidate.recipient === ownerUser.email &&
+          candidate.subject === 'Your ClickBeard appointment was cancelled',
+      );
+      expect(notification.body).toContain('Barber called in sick');
+
+      const alreadyCancelled = await request(app.getHttpServer())
+        .patch(`/appointments/${created.body.id}/cancel`)
+        .set(authHeader(admin.accessToken))
+        .send({ reason: 'Trying again' });
+      expect(alreadyCancelled.status).toBe(409);
+    });
+  });
+
+  describe('Booking during a barber unavailability period', () => {
+    let unavailableBarberId: string;
+
+    beforeAll(async () => {
+      const barberUser = await registerUser(app, { role: UserRole.BARBER });
+      const barber = await request(app.getHttpServer())
+        .post('/barbers')
+        .set(authHeader(admin.accessToken))
+        .send({
+          userId: barberUser.id,
+          age: 30,
+          hiredAt: '2025-01-01T00:00:00.000Z',
+          qualificationIds: [qualificationId],
+        });
+      unavailableBarberId = barber.body.id as string;
+
+      // Cover a wide future window so the fixed 08:00-18:00 grid this
+      // barber would otherwise expose is entirely blocked, regardless of
+      // which day the test environment's clock falls on.
+      await request(app.getHttpServer())
+        .post(`/barbers/${unavailableBarberId}/unavailabilities`)
+        .set(authHeader(admin.accessToken))
+        .send({
+          startAt: new Date(Date.now()).toISOString(),
+          endAt: new Date(Date.now() + 30 * ONE_DAY_MS).toISOString(),
+          reason: 'Extended sick leave',
+        })
+        .expect(201);
+    });
+
+    it('excludes every slot from the time-slots listing', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+      const dateParam = new Date().toISOString().slice(0, 10);
+
+      const response = await request(app.getHttpServer())
+        .get('/appointments/time-slots')
+        .set(authHeader(session.accessToken))
+        .query({
+          barberId: unavailableBarberId,
+          qualificationId,
+          date: dateParam,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.timeSlots).toEqual([]);
+    });
+
+    it('rejects booking with 409 BarberUnavailableError', async () => {
+      const { session } = await registerAndLogin(app, notifications);
+
+      // Tomorrow at 09:00 local time: always grid-aligned (top of the
+      // hour), within business hours, and well past the 2h minimum
+      // notice — so this fails on unavailability, not slot alignment.
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+
+      const response = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(session.accessToken))
+        .send({
+          barberId: unavailableBarberId,
+          qualificationId,
+          startAt: tomorrow.toISOString(),
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe('BarberUnavailableError');
+    });
+  });
 });

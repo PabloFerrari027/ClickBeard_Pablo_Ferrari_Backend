@@ -21,6 +21,7 @@ function buildAppointment(): Appointment {
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     cancelledAt: null,
+    cancellationReason: null,
   });
 }
 
@@ -53,6 +54,7 @@ describe('ListFutureAppointmentsUseCase', () => {
       findByCustomerId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
+      findScheduledByBarberAndRange: jest.fn(),
     };
     userRepository = {
       save: jest.fn(),

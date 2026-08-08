@@ -43,6 +43,12 @@ const TEMPLATES: Record<string, TemplatesByLanguage> = {
       body: 'Hi {{name}}, we noticed a new sign-in to your account. If this was not you, please contact support.',
     },
   },
+  AppointmentCancelledByAdmin: {
+    [DEFAULT_LANGUAGE]: {
+      subject: 'Your ClickBeard appointment was cancelled',
+      body: 'Hi {{name}}, your appointment was cancelled. Reason: {{reason}}. We are sorry for the inconvenience.',
+    },
+  },
 };
 
 @Injectable()

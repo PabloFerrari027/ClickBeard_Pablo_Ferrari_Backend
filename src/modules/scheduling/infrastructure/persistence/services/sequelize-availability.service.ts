@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
+import { InjectConnection, InjectModel } from '@nestjs/sequelize';
+import { Op, QueryTypes } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
 
 import { AppointmentStatus } from '../../../core/domain/enums/appointment-status.enum';
 import { TimeSlot } from '../../../core/domain/value-objects/time-slot.value-object';
@@ -10,11 +11,17 @@ import { TransactionContext } from '../../../../../shared/database/transaction-c
 import { getDayRange } from '../day-range';
 import { AppointmentModel } from '../models/appointment.model';
 
+interface UnavailabilityPeriodRow {
+  startAt: Date;
+  endAt: Date;
+}
+
 @Injectable()
 export class SequelizeAvailabilityService implements AvailabilityService {
   constructor(
     @InjectModel(AppointmentModel)
     private readonly appointmentModel: typeof AppointmentModel,
+    @InjectConnection() private readonly sequelize: Sequelize,
   ) {}
 
   async isBarberAvailable(
@@ -50,6 +57,62 @@ export class SequelizeAvailabilityService implements AvailabilityService {
       });
 
       return models.map((model) => TimeSlot.create(model.startAt));
+    } catch (error) {
+      throw mapToPersistenceError(error);
+    }
+  }
+
+  async isBarberUnavailable(
+    barberId: string,
+    timeSlot: TimeSlot,
+  ): Promise<boolean> {
+    try {
+      const rows = await this.sequelize.query<{ exists: boolean }>(
+        `SELECT EXISTS(
+           SELECT 1 FROM "barbers_unavailabilities"
+           WHERE barber_id = :barberId
+             AND start_at <= :slotStart
+             AND end_at > :slotStart
+         ) AS "exists"`,
+        {
+          replacements: {
+            barberId,
+            slotStart: timeSlot.getStart(),
+          },
+          type: QueryTypes.SELECT,
+          transaction: TransactionContext.current(),
+        },
+      );
+
+      return rows[0]?.exists ?? false;
+    } catch (error) {
+      throw mapToPersistenceError(error);
+    }
+  }
+
+  async getUnavailableSlots(barberId: string, date: Date): Promise<TimeSlot[]> {
+    try {
+      const { start, end } = getDayRange(date);
+      const periods = await this.sequelize.query<UnavailabilityPeriodRow>(
+        `SELECT start_at AS "startAt", end_at AS "endAt"
+         FROM "barbers_unavailabilities"
+         WHERE barber_id = :barberId
+           AND start_at < :dayEnd
+           AND end_at > :dayStart`,
+        {
+          replacements: { barberId, dayStart: start, dayEnd: end },
+          type: QueryTypes.SELECT,
+          transaction: TransactionContext.current(),
+        },
+      );
+
+      return TimeSlot.allForDate(date).filter((slot) =>
+        periods.some(
+          (period) =>
+            slot.getStart().getTime() >= period.startAt.getTime() &&
+            slot.getStart().getTime() < period.endAt.getTime(),
+        ),
+      );
     } catch (error) {
       throw mapToPersistenceError(error);
     }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { AppointmentAlreadyCancelledError } from '../errors/appointment-already-cancelled.error';
+import { CancellationReasonRequiredError } from '../errors/cancellation-reason-required.error';
 import { CancellationWindowExpiredError } from '../errors/cancellation-window-expired.error';
 import { AppointmentStatus } from '../enums/appointment-status.enum';
 import { TimeSlot } from '../value-objects/time-slot.value-object';
@@ -22,6 +23,7 @@ export interface AppointmentProps {
   createdAt: Date;
   updatedAt: Date;
   cancelledAt: Date | null;
+  cancellationReason: string | null;
 }
 
 export class Appointment {
@@ -34,6 +36,7 @@ export class Appointment {
   private readonly createdAt: Date;
   private updatedAt: Date;
   private cancelledAt: Date | null;
+  private cancellationReason: string | null;
 
   private constructor(props: AppointmentProps) {
     this.id = props.id;
@@ -45,6 +48,7 @@ export class Appointment {
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
     this.cancelledAt = props.cancelledAt;
+    this.cancellationReason = props.cancellationReason;
   }
 
   static create(props: {
@@ -64,6 +68,7 @@ export class Appointment {
       createdAt: props.now,
       updatedAt: props.now,
       cancelledAt: null,
+      cancellationReason: null,
     });
   }
 
@@ -84,6 +89,28 @@ export class Appointment {
 
     this.status = AppointmentStatus.CANCELLED;
     this.cancelledAt = now;
+    this.touch(now);
+  }
+
+  /**
+   * Admin-initiated cancellation: unlike `cancel`, doesn't enforce
+   * MIN_APPOINTMENT_NOTICE_MS (a barber calling in sick is often same-day)
+   * and requires a reason, persisted for the customer's notification.
+   */
+  cancelByAdmin(now: Date, reason: string): void {
+    if (this.status === AppointmentStatus.CANCELLED) {
+      throw new AppointmentAlreadyCancelledError();
+    }
+
+    const trimmedReason = reason.trim();
+
+    if (trimmedReason.length === 0) {
+      throw new CancellationReasonRequiredError();
+    }
+
+    this.status = AppointmentStatus.CANCELLED;
+    this.cancelledAt = now;
+    this.cancellationReason = trimmedReason;
     this.touch(now);
   }
 
@@ -125,5 +152,9 @@ export class Appointment {
 
   getCancelledAt(): Date | null {
     return this.cancelledAt;
+  }
+
+  getCancellationReason(): string | null {
+    return this.cancellationReason;
   }
 }

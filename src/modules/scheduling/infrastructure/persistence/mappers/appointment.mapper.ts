@@ -19,6 +19,7 @@ export function toAppointmentPersistence(
     createdAt: appointment.getCreatedAt(),
     updatedAt: appointment.getUpdatedAt(),
     cancelledAt: appointment.getCancelledAt(),
+    cancellationReason: appointment.getCancellationReason(),
   };
 }
 
@@ -33,5 +34,6 @@ export function toAppointmentDomain(model: AppointmentModel): Appointment {
     createdAt: model.createdAt,
     updatedAt: model.updatedAt,
     cancelledAt: model.cancelledAt,
+    cancellationReason: model.cancellationReason,
   });
 }

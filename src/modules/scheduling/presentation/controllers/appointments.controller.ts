@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseInterceptors,
@@ -17,6 +18,7 @@ import { CurrentUser } from '../../../auth/presentation/decorators/current-user.
 import type { AuthenticatedRequestUser } from '../../../auth/presentation/types/authenticated-request-user';
 import { FieldSelectionInterceptor } from '../../../../shared/presentation/interceptors/field-selection.interceptor';
 import { UserRole } from '../../../identity/core/domain/enums/user-role.enum';
+import { CancelAppointmentByAdminUseCase } from '../../core/application/use-cases/cancel-appointment-by-admin.use-case';
 import { CancelAppointmentUseCase } from '../../core/application/use-cases/cancel-appointment.use-case';
 import { CreateAppointmentUseCase } from '../../core/application/use-cases/create-appointment.use-case';
 import { GetAppointmentUseCase } from '../../core/application/use-cases/get-appointment.use-case';
@@ -25,6 +27,7 @@ import { ListCustomerAppointmentsUseCase } from '../../core/application/use-case
 import { ListFutureAppointmentsUseCase } from '../../core/application/use-cases/list-future-appointments.use-case';
 import { ListTodayAppointmentsUseCase } from '../../core/application/use-cases/list-today-appointments.use-case';
 import { AppointmentResponseDto } from '../dtos/appointment.response.dto';
+import { CancelAppointmentByAdminRequestDto } from '../dtos/cancel-appointment-by-admin.request.dto';
 import { CreateAppointmentRequestDto } from '../dtos/create-appointment.request.dto';
 import { ListAppointmentsResponseDto } from '../dtos/list-appointments.response.dto';
 import { ListAvailableTimeSlotsQueryDto } from '../dtos/list-available-time-slots.query.dto';
@@ -37,6 +40,7 @@ export class AppointmentsController {
   constructor(
     private readonly createAppointmentUseCase: CreateAppointmentUseCase,
     private readonly cancelAppointmentUseCase: CancelAppointmentUseCase,
+    private readonly cancelAppointmentByAdminUseCase: CancelAppointmentByAdminUseCase,
     private readonly getAppointmentUseCase: GetAppointmentUseCase,
     private readonly listCustomerAppointmentsUseCase: ListCustomerAppointmentsUseCase,
     private readonly listTodayAppointmentsUseCase: ListTodayAppointmentsUseCase,
@@ -143,6 +147,26 @@ export class AppointmentsController {
     const { appointment } = await this.cancelAppointmentUseCase.execute({
       appointmentId: id,
       customerId: requester.id,
+    });
+    return appointment;
+  }
+
+  @Patch(':id/cancel')
+  @Auth(UserRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Cancels any appointment with a mandatory reason; the customer is notified by email',
+  })
+  @ApiOkResponse({ type: AppointmentResponseDto })
+  async cancelByAdmin(
+    @Param('id') id: string,
+    @Body() body: CancelAppointmentByAdminRequestDto,
+    @CurrentUser() requester: AuthenticatedRequestUser,
+  ): Promise<AppointmentResponseDto> {
+    const { appointment } = await this.cancelAppointmentByAdminUseCase.execute({
+      appointmentId: id,
+      requesterId: requester.id,
+      reason: body.reason,
     });
     return appointment;
   }

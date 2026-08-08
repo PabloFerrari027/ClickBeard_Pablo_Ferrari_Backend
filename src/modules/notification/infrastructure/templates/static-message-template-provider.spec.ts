@@ -43,6 +43,7 @@ describe('StaticMessageTemplateProvider', () => {
     'PasswordChanged',
     'VerificationCodeGenerated',
     'UserLoggedIn',
+    'AppointmentCancelledByAdmin',
   ])(
     'has a template for %s with a non-empty subject and body',
     async (eventName) => {

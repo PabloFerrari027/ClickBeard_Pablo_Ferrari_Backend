@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 
 import { Appointment } from '../../../core/domain/entities/appointment.entity';
 import { BarberTimeSlotConflictError } from '../../../core/domain/errors/barber-time-slot-conflict.error';
+import { AppointmentStatus } from '../../../core/domain/enums/appointment-status.enum';
 import {
   AppointmentRepository,
   PaginatedAppointments,
@@ -84,6 +85,28 @@ export class SequelizeAppointmentRepository implements AppointmentRepository {
     limit: number,
   ): Promise<PaginatedAppointments> {
     return this.findPaginated({ startAt: { [Op.gte]: from } }, page, limit);
+  }
+
+  async findScheduledByBarberAndRange(
+    barberId: string,
+    start: Date,
+    end: Date,
+  ): Promise<Appointment[]> {
+    try {
+      const models = await this.appointmentModel.findAll({
+        where: {
+          barberId,
+          status: AppointmentStatus.SCHEDULED,
+          startAt: { [Op.gte]: start, [Op.lt]: end },
+        },
+        order: [['startAt', 'ASC']],
+        transaction: TransactionContext.current(),
+      });
+
+      return models.map(toAppointmentDomain);
+    } catch (error) {
+      throw mapToPersistenceError(error);
+    }
   }
 
   private async findPaginated(
