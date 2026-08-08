@@ -24,8 +24,7 @@ export interface RegisterOverrides {
   name?: string;
   email?: string;
   password?: string;
-  role?: UserRole;
-  requesterId?: string;
+  birthDate?: string;
 }
 
 const DEFAULT_PASSWORD = 'Password123';
@@ -54,8 +53,7 @@ export async function registerUser(
       name,
       email,
       password,
-      role: overrides.role,
-      requesterId: overrides.requesterId,
+      birthDate: overrides.birthDate,
     })
     .expect(201);
 
@@ -66,6 +64,24 @@ export async function registerUser(
     password,
     role: response.body.role as UserRole,
   };
+}
+
+/**
+ * Promotes a user to a new role via `PATCH /users/:id/role` — the only
+ * path to BARBER/ADMIN now that registration always creates a CLIENT.
+ * Requires an authenticated admin session.
+ */
+export async function promoteUser(
+  app: INestApplication,
+  adminSession: Session,
+  userId: string,
+  role: UserRole,
+): Promise<void> {
+  await request(app.getHttpServer())
+    .patch(`/users/${userId}/role`)
+    .set(authHeader(adminSession.accessToken))
+    .send({ role })
+    .expect(200);
 }
 
 function extractVerificationCode(body: string): string {

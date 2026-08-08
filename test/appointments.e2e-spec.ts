@@ -5,6 +5,7 @@ import { UserRole } from '../src/modules/identity/core/domain/enums/user-role.en
 import {
   authHeader,
   getAdminSession,
+  promoteUser,
   registerAndLogin,
   registerUser,
   Session,
@@ -32,12 +33,13 @@ describe('Appointments (e2e)', () => {
       .send({ name: `Appointments Suite Qualification ${uniqueEmail('q')}` });
     qualificationId = qualification.body.id as string;
 
-    const barberUser = await registerUser(app, { role: UserRole.BARBER });
+    const barberUser = await registerUser(app);
+    await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
     const barber = await request(app.getHttpServer())
       .post('/barbers')
       .set(authHeader(admin.accessToken))
       .send({
-        userId: barberUser.id,
+        email: barberUser.email,
         age: 30,
         hiredAt: '2025-01-01T00:00:00.000Z',
         qualificationIds: [qualificationId],
@@ -340,12 +342,13 @@ describe('Appointments (e2e)', () => {
     let unavailableBarberId: string;
 
     beforeAll(async () => {
-      const barberUser = await registerUser(app, { role: UserRole.BARBER });
+      const barberUser = await registerUser(app);
+      await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
       const barber = await request(app.getHttpServer())
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 30,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],

@@ -5,6 +5,7 @@ import { UserRole } from '../src/modules/identity/core/domain/enums/user-role.en
 import {
   authHeader,
   getAdminSession,
+  promoteUser,
   registerAndLogin,
   registerUser,
   Session,
@@ -35,7 +36,9 @@ describe('Barbers (e2e)', () => {
   });
 
   async function createBarberUser() {
-    return registerUser(app, { role: UserRole.BARBER });
+    const user = await registerUser(app);
+    await promoteUser(app, admin, user.id, UserRole.BARBER);
+    return { ...user, role: UserRole.BARBER };
   }
 
   describe('POST /barbers', () => {
@@ -55,7 +58,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(session.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 30,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -71,7 +74,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 30,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -89,7 +92,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: clientUser.id,
+          email: clientUser.email,
           age: 30,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -113,7 +116,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 25,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -136,7 +139,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 40,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -159,7 +162,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 22,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -183,7 +186,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 28,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -232,7 +235,7 @@ describe('Barbers (e2e)', () => {
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
-          userId: barberUser.id,
+          email: barberUser.email,
           age: 30,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
