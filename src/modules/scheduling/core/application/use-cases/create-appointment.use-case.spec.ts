@@ -4,6 +4,7 @@ import { User } from '../../../../identity/core/domain/entities/user.entity';
 import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
 import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
 import { AppointmentTooSoonError } from '../../domain/errors/appointment-too-soon.error';
+import { BarberCannotBookOwnAppointmentError } from '../../domain/errors/barber-cannot-book-own-appointment.error';
 import { BarberDoesNotHaveQualificationError } from '../../domain/errors/barber-does-not-have-qualification.error';
 import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error';
 import { BarberTimeSlotConflictError } from '../../domain/errors/barber-time-slot-conflict.error';
@@ -136,6 +137,17 @@ describe('CreateAppointmentUseCase', () => {
     expect(appointmentRepository.save).toHaveBeenCalledTimes(1);
     expect(result.appointment.customerId).toBe('customer-id');
     expect(result.appointment.barberId).toBe('barber-id');
+  });
+
+  it('throws BarberCannotBookOwnAppointmentError when a barber tries to book themselves', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildCustomer(true, UserRole.BARBER),
+    );
+
+    await expect(
+      useCase.execute({ ...validInput, customerId: 'barber-id' }),
+    ).rejects.toThrow(BarberCannotBookOwnAppointmentError);
+    expect(appointmentRepository.save).not.toHaveBeenCalled();
   });
 
   it('throws UserNotFoundError when the customer does not exist or is inactive', async () => {

@@ -1,5 +1,6 @@
 import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { AppointmentTooSoonError } from '../../domain/errors/appointment-too-soon.error';
+import { BarberCannotBookOwnAppointmentError } from '../../domain/errors/barber-cannot-book-own-appointment.error';
 import { BarberDoesNotHaveQualificationError } from '../../domain/errors/barber-does-not-have-qualification.error';
 import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error';
 import { BarberTimeSlotConflictError } from '../../domain/errors/barber-time-slot-conflict.error';
@@ -43,6 +44,10 @@ export class CreateAppointmentUseCase implements UseCase<
 
     if (!customer || !customer.isActive()) {
       throw new UserNotFoundError();
+    }
+
+    if (input.customerId === input.barberId) {
+      throw new BarberCannotBookOwnAppointmentError();
     }
 
     const barberProfile = await this.barberDirectory.findById(input.barberId);
