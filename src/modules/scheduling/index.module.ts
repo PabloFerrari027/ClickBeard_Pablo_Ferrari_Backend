@@ -303,7 +303,11 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
             resource: CacheResource.FUTURE_APPOINTMENTS,
             // Mirrors ListFutureAppointmentsUseCase's own DEFAULT_PAGE.
             buildKey: (input) =>
-              CacheKeyGenerator.futureAppointments(input.page ?? 1),
+              CacheKeyGenerator.futureAppointments(
+                input.page ?? 1,
+                input.startAt,
+                input.endAt,
+              ),
           },
         ),
       inject: [
