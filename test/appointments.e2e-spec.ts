@@ -248,31 +248,18 @@ describe('Appointments (e2e)', () => {
       expect(strangerGetById.status).toBe(403);
     });
 
-    it('does not duplicate a self-booked appointment (barber as both customer and professional) in the listing', async () => {
-      const {
-        barberProfileId,
-        session: barberSession,
-        userId,
-      } = await registerBarber();
+    it('rejects a barber attempting to book an appointment with themselves', async () => {
+      const { barberProfileId, session: barberSession } =
+        await registerBarber();
       const startAt = await findBookableSlot(barberSession.accessToken);
 
-      const created = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .post('/appointments')
         .set(authHeader(barberSession.accessToken))
-        .send({ barberId: barberProfileId, qualificationId, startAt })
-        .expect(201);
-      expect(created.body.customerId).toBe(userId);
-      expect(created.body.barberId).toBe(barberProfileId);
+        .send({ barberId: barberProfileId, qualificationId, startAt });
 
-      const mine = await request(app.getHttpServer())
-        .get('/appointments/me')
-        .set(authHeader(barberSession.accessToken));
-      expect(mine.status).toBe(200);
-
-      const matches = (mine.body.appointments as Array<{ id: string }>).filter(
-        (appointment) => appointment.id === created.body.id,
-      );
-      expect(matches).toHaveLength(1);
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('BarberCannotBookOwnAppointmentError');
     });
   });
 
