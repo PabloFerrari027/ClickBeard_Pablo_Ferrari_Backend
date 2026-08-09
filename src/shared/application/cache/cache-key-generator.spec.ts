@@ -65,9 +65,9 @@ describe('CacheKeyGenerator', () => {
     ).toBe(
       'appointments:future:1:2026-01-01T00:00:00.000Z:2026-01-31T23:59:59.999Z',
     );
-    expect(
-      CacheKeyGenerator.futureAppointments(1, startAt).toString(),
-    ).toBe('appointments:future:1:2026-01-01T00:00:00.000Z:-');
+    expect(CacheKeyGenerator.futureAppointments(1, startAt).toString()).toBe(
+      'appointments:future:1:2026-01-01T00:00:00.000Z:-',
+    );
   });
 
   it('formats available time slots keys with a date-only segment', () => {

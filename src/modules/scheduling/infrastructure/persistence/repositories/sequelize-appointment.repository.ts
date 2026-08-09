@@ -95,9 +95,7 @@ export class SequelizeAppointmentRepository implements AppointmentRepository {
   ): Promise<PaginatedAppointments> {
     return this.findPaginated(
       {
-        startAt: to
-          ? { [Op.gte]: from, [Op.lte]: to }
-          : { [Op.gte]: from },
+        startAt: to ? { [Op.gte]: from, [Op.lte]: to } : { [Op.gte]: from },
       },
       page,
       limit,

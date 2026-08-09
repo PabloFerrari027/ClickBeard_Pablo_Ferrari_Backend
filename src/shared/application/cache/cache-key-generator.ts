@@ -76,7 +76,11 @@ export class CacheKeyGenerator {
    * so different period filters on the same page never collide on the
    * same cache entry.
    */
-  static futureAppointments(page: number, startAt?: Date, endAt?: Date): CacheKey {
+  static futureAppointments(
+    page: number,
+    startAt?: Date,
+    endAt?: Date,
+  ): CacheKey {
     const start = startAt ? startAt.toISOString() : '-';
     const end = endAt ? endAt.toISOString() : '-';
 
