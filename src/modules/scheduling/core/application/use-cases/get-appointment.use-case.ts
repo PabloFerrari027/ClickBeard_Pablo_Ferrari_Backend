@@ -30,7 +30,10 @@ export class GetAppointmentUseCase implements UseCase<
       throw new AppointmentNotFoundError();
     }
 
-    if (appointment.getCustomerId() !== input.requesterId) {
+    if (
+      appointment.getCustomerId() !== input.requesterId &&
+      appointment.getBarberId() !== input.requesterId
+    ) {
       const requester = await this.userRepository.findById(input.requesterId);
 
       if (!requester || requester.getRole() !== UserRole.ADMIN) {
