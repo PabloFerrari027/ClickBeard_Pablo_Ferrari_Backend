@@ -367,6 +367,62 @@ describe('Appointments (e2e)', () => {
         ]),
       );
     });
+
+    it('narrows /future to a startAt/endAt time period', async () => {
+      const { session: ownerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(ownerSession.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(ownerSession.accessToken))
+        .send({ barberId, qualificationId, startAt })
+        .expect(201);
+
+      const bookedAt = new Date(startAt);
+
+      const including = await request(app.getHttpServer())
+        .get('/appointments/future')
+        .set(authHeader(admin.accessToken))
+        .query({
+          startAt: new Date(bookedAt.getTime() - ONE_DAY_MS).toISOString(),
+          endAt: new Date(bookedAt.getTime() + ONE_DAY_MS).toISOString(),
+        });
+      expect(including.status).toBe(200);
+      expect(including.body.appointments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: created.body.id }),
+        ]),
+      );
+
+      const excluding = await request(app.getHttpServer())
+        .get('/appointments/future')
+        .set(authHeader(admin.accessToken))
+        .query({
+          endAt: new Date(bookedAt.getTime() - ONE_DAY_MS).toISOString(),
+        });
+      expect(excluding.status).toBe(200);
+      expect(excluding.body.appointments).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: created.body.id }),
+        ]),
+      );
+    });
+
+    it('rejects a /future period with startAt after endAt with 400', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/appointments/future')
+        .set(authHeader(admin.accessToken))
+        .query({
+          startAt: new Date(Date.now() + 2 * ONE_DAY_MS).toISOString(),
+          endAt: new Date(Date.now() + ONE_DAY_MS).toISOString(),
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('InvalidAppointmentPeriodError');
+    });
   });
 
   describe('PATCH /appointments/:id/cancel', () => {

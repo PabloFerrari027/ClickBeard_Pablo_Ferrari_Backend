@@ -33,11 +33,15 @@ export interface AppointmentRepository {
     page: number,
     limit: number,
   ): Promise<PaginatedAppointments>;
-  /** All appointments starting at or after the given instant. */
+  /**
+   * All appointments starting at or after `from`, optionally bounded
+   * above by `to` (inclusive) to scope the listing to a time period.
+   */
   findUpcoming(
     from: Date,
     page: number,
     limit: number,
+    to?: Date,
   ): Promise<PaginatedAppointments>;
   /**
    * All SCHEDULED appointments for a barber starting within [start, end).

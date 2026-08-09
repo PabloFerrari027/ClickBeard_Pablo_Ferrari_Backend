@@ -1,4 +1,5 @@
 import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
+import { InvalidAppointmentPeriodError } from '../../domain/errors/invalid-appointment-period.error';
 import {
   ListFutureAppointmentsInputDto,
   ListFutureAppointmentsOutputDto,
@@ -27,13 +28,27 @@ export class ListFutureAppointmentsUseCase implements UseCase<
   ): Promise<ListFutureAppointmentsOutputDto> {
     await ensureRequesterIsAdmin(this.userRepository, input.requesterId);
 
+    if (
+      input.startAt &&
+      input.endAt &&
+      input.startAt.getTime() > input.endAt.getTime()
+    ) {
+      throw new InvalidAppointmentPeriodError();
+    }
+
     const page = resolvePage(input.page);
+    const now = new Date();
+    const from =
+      input.startAt && input.startAt.getTime() > now.getTime()
+        ? input.startAt
+        : now;
 
     const { appointments, total } =
       await this.appointmentRepository.findUpcoming(
-        new Date(),
+        from,
         page,
         DEFAULT_LIMIT,
+        input.endAt,
       );
 
     return {

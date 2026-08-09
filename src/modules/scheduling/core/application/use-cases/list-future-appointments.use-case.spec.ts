@@ -3,6 +3,7 @@ import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum'
 import { User } from '../../../../identity/core/domain/entities/user.entity';
 import { Email } from '../../../../identity/core/domain/value-objects/email.value-object';
 import { Password } from '../../../../identity/core/domain/value-objects/password.value-object';
+import { InvalidAppointmentPeriodError } from '../../domain/errors/invalid-appointment-period.error';
 import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
 import { AppointmentStatus } from '../../domain/enums/appointment-status.enum';
 import { Appointment } from '../../domain/entities/appointment.entity';
@@ -88,6 +89,7 @@ describe('ListFutureAppointmentsUseCase', () => {
       now,
       1,
       100,
+      undefined,
     );
     expect(result.appointments).toHaveLength(1);
   });
@@ -100,5 +102,62 @@ describe('ListFutureAppointmentsUseCase', () => {
     await expect(
       useCase.execute({ requesterId: 'customer-id' }),
     ).rejects.toThrow(UserIsNotAdminError);
+  });
+
+  it('narrows the listing to a future startAt/endAt period', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildUser('admin-id', UserRole.ADMIN),
+    );
+    appointmentRepository.findUpcoming.mockResolvedValue({
+      appointments: [buildAppointment()],
+      total: 1,
+    });
+
+    const startAt = new Date(2026, 0, 20, 0, 0, 0, 0);
+    const endAt = new Date(2026, 0, 25, 23, 59, 59, 999);
+
+    await useCase.execute({ requesterId: 'admin-id', startAt, endAt });
+
+    expect(appointmentRepository.findUpcoming).toHaveBeenCalledWith(
+      startAt,
+      1,
+      100,
+      endAt,
+    );
+  });
+
+  it('clamps a startAt in the past up to "now"', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildUser('admin-id', UserRole.ADMIN),
+    );
+    appointmentRepository.findUpcoming.mockResolvedValue({
+      appointments: [],
+      total: 0,
+    });
+
+    const startAt = new Date(2020, 0, 1, 0, 0, 0, 0);
+
+    await useCase.execute({ requesterId: 'admin-id', startAt });
+
+    expect(appointmentRepository.findUpcoming).toHaveBeenCalledWith(
+      now,
+      1,
+      100,
+      undefined,
+    );
+  });
+
+  it('throws InvalidAppointmentPeriodError when startAt is after endAt', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildUser('admin-id', UserRole.ADMIN),
+    );
+
+    const startAt = new Date(2026, 0, 25, 0, 0, 0, 0);
+    const endAt = new Date(2026, 0, 20, 0, 0, 0, 0);
+
+    await expect(
+      useCase.execute({ requesterId: 'admin-id', startAt, endAt }),
+    ).rejects.toThrow(InvalidAppointmentPeriodError);
+    expect(appointmentRepository.findUpcoming).not.toHaveBeenCalled();
   });
 });

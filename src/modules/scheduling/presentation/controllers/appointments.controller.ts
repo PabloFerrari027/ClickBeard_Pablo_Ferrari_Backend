@@ -32,6 +32,7 @@ import { CreateAppointmentRequestDto } from '../dtos/create-appointment.request.
 import { ListAppointmentsResponseDto } from '../dtos/list-appointments.response.dto';
 import { ListAvailableTimeSlotsQueryDto } from '../dtos/list-available-time-slots.query.dto';
 import { ListAvailableTimeSlotsResponseDto } from '../dtos/list-available-time-slots.response.dto';
+import { ListFutureAppointmentsQueryDto } from '../dtos/list-future-appointments.query.dto';
 
 @ApiTags('Appointments')
 @UseInterceptors(FieldSelectionInterceptor)
@@ -95,15 +96,20 @@ export class AppointmentsController {
 
   @Get('future')
   @Auth(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Lists upcoming appointments' })
+  @ApiOperation({
+    summary:
+      'Lists upcoming appointments, optionally narrowed to a time period',
+  })
   @ApiOkResponse({ type: ListAppointmentsResponseDto })
   async listFuture(
     @CurrentUser() requester: AuthenticatedRequestUser,
-    @Query('page') page?: string,
+    @Query() query: ListFutureAppointmentsQueryDto,
   ): Promise<ListAppointmentsResponseDto> {
     return this.listFutureAppointmentsUseCase.execute({
       requesterId: requester.id,
-      page: page ? Number(page) : undefined,
+      page: query.page ? Number(query.page) : undefined,
+      startAt: query.startAt ? new Date(query.startAt) : undefined,
+      endAt: query.endAt ? new Date(query.endAt) : undefined,
     });
   }
 

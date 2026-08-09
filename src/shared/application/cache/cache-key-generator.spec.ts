@@ -49,10 +49,24 @@ describe('CacheKeyGenerator', () => {
       'appointments:today:',
     );
     expect(CacheKeyGenerator.futureAppointments(2).toString()).toBe(
-      'appointments:future:2',
+      'appointments:future:2:-:-',
     );
     expect(CacheKeyGenerator.futureAppointmentsPrefix().toString()).toBe(
       'appointments:future:',
+    );
+  });
+
+  it('folds the period filter into the future appointments key', () => {
+    const startAt = new Date('2026-01-01T00:00:00.000Z');
+    const endAt = new Date('2026-01-31T23:59:59.999Z');
+
+    expect(
+      CacheKeyGenerator.futureAppointments(1, startAt, endAt).toString(),
+    ).toBe(
+      'appointments:future:1:2026-01-01T00:00:00.000Z:2026-01-31T23:59:59.999Z',
+    );
+    expect(CacheKeyGenerator.futureAppointments(1, startAt).toString()).toBe(
+      'appointments:future:1:2026-01-01T00:00:00.000Z:-',
     );
   });
 

@@ -71,8 +71,20 @@ export class CacheKeyGenerator {
     return CacheKeyPrefix.of('appointments:today:');
   }
 
-  static futureAppointments(page: number): CacheKey {
-    return CacheKey.of(`appointments:future:${page}`);
+  /**
+   * `startAt`/`endAt` fold into the key (ISO instants, `-` when absent)
+   * so different period filters on the same page never collide on the
+   * same cache entry.
+   */
+  static futureAppointments(
+    page: number,
+    startAt?: Date,
+    endAt?: Date,
+  ): CacheKey {
+    const start = startAt ? startAt.toISOString() : '-';
+    const end = endAt ? endAt.toISOString() : '-';
+
+    return CacheKey.of(`appointments:future:${page}:${start}:${end}`);
   }
 
   static futureAppointmentsPrefix(): CacheKeyPrefix {
