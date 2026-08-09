@@ -646,7 +646,7 @@ Um **índice único parcial**: só considera linhas com `status = 'SCHEDULED'`. 
 | `APPOINTMENT` | 1 min | `GetAppointmentUseCase` | `appointment:{id}:{requesterId}` (**escopada por requester**) |
 | `CUSTOMER_APPOINTMENTS` | 1 min | `ListCustomerAppointmentsUseCase` | `appointments:{requesterId}:{page}` (mesmo namespace para um `CLIENT` listando como cliente ou um `BARBER` listando como cliente **e** profissional — ver seção 11.6) |
 | `TODAY_APPOINTMENTS` | 1 min | `ListTodayAppointmentsUseCase` | `appointments:today:{page}` |
-| `FUTURE_APPOINTMENTS` | 1 min | `ListFutureAppointmentsUseCase` | `appointments:future:{page}` |
+| `FUTURE_APPOINTMENTS` | 1 min | `ListFutureAppointmentsUseCase` | `appointments:future:{page}:{startAt ou '-'}:{endAt ou '-'}` (o período opcional entra na chave — filtros diferentes na mesma página não colidem) |
 | `AVAILABLE_TIME_SLOTS` | 30 s | `ListAvailableTimeSlotsUseCase` | `time-slots:{barberId}:{data}:{qualificationId}` |
 | `DASHBOARD_METRICS` | 5 min | `GetDashboardMetricsUseCase` | `dashboard:{período}` |
 | `USER_METRICS` / `APPOINTMENT_METRICS` / `BARBER_METRICS` / `OCCUPATION_METRICS` | 5 min | respectivos use cases de analytics | `metrics:{tipo}:{período}` |
@@ -899,6 +899,7 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | Não é possível reservar um horário em que o barbeiro está marcado como indisponível | `BarberUnavailableError` (409, distinto de `BarberTimeSlotConflictError`) — checado via `AvailabilityService.isBarberUnavailable` dentro da mesma transação da checagem de conflito |
 | A listagem de horários disponíveis exclui os horários bloqueados por indisponibilidade | `ListAvailableTimeSlotsUseCase` combina `getBookedSlots` e `getUnavailableSlots` |
 | Listagens administrativas (`/today`, `/future`) exigem `ADMIN` | Reforçado tanto no guard do controller quanto no `ensureRequesterIsAdmin` dentro do use case |
+| **`GET /appointments/future` aceita um período opcional (`startAt`/`endAt`)** | Query params opcionais e independentes (`ListFutureAppointmentsQueryDto`, `IsDateString`). `startAt` só restringe a listagem para **depois** do informado — nunca antes de "agora" (`ListFutureAppointmentsUseCase` usa `max(now, startAt)` como limite inferior, já que a rota é só de agendamentos futuros); `endAt` limita o topo do intervalo. Informar `startAt` depois de `endAt` lança `InvalidAppointmentPeriodError` (400) antes de qualquer consulta ao repositório |
 
 ### 11.7 Analytics
 
@@ -961,7 +962,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
-| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, `BARBER` reservando com outro `BARBER` e listando via `/me`, `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403), auto-agendamento sem duplicar na listagem |
+| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, filtro de período (`startAt`/`endAt`) em `/future` incluindo e excluindo um agendamento e rejeição com 400 quando `startAt` vem depois de `endAt`, `BARBER` reservando com outro `BARBER` (e rejeição ao tentar reservar consigo mesmo), `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403) |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
 
 **42 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
