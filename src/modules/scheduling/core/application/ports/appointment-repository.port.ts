@@ -22,6 +22,11 @@ export interface AppointmentRepository {
     page: number,
     limit: number,
   ): Promise<PaginatedAppointments>;
+  findByBarberId(
+    barberId: string,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedAppointments>;
   /** All appointments whose time slot falls on the given calendar day. */
   findByDate(
     date: Date,

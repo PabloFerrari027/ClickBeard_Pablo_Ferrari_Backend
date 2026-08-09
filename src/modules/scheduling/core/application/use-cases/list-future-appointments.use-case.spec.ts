@@ -52,6 +52,7 @@ describe('ListFutureAppointmentsUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByCustomerId: jest.fn(),
+      findByBarberId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
       findScheduledByBarberAndRange: jest.fn(),

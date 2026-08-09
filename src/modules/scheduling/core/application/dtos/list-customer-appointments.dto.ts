@@ -1,7 +1,7 @@
 import { AppointmentDto } from './appointment.dto';
 
 export interface ListCustomerAppointmentsInputDto {
-  customerId: string;
+  requesterId: string;
   page?: number;
 }
 

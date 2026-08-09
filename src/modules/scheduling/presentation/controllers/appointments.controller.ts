@@ -74,7 +74,7 @@ export class AppointmentsController {
     @Query('page') page?: string,
   ): Promise<ListAppointmentsResponseDto> {
     return this.listCustomerAppointmentsUseCase.execute({
-      customerId: requester.id,
+      requesterId: requester.id,
       page: page ? Number(page) : undefined,
     });
   }

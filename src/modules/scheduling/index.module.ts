@@ -88,6 +88,13 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
               CacheKeyGenerator.customerAppointmentsPrefix(
                 output.appointment.customerId,
               ),
+              // Same cache namespace as the customer's — a barber's own
+              // /me list is also keyed by their user id, and must be
+              // invalidated when they gain a new appointment as the
+              // professional.
+              CacheKeyGenerator.customerAppointmentsPrefix(
+                output.appointment.barberId,
+              ),
               CacheKeyGenerator.todayAppointmentsPrefix(),
               CacheKeyGenerator.futureAppointmentsPrefix(),
             ],
@@ -128,6 +135,9 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
               CacheKeyGenerator.customerAppointmentsPrefix(
                 output.appointment.customerId,
               ),
+              CacheKeyGenerator.customerAppointmentsPrefix(
+                output.appointment.barberId,
+              ),
               CacheKeyGenerator.todayAppointmentsPrefix(),
               CacheKeyGenerator.futureAppointmentsPrefix(),
             ],
@@ -166,6 +176,9 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
               ),
               CacheKeyGenerator.customerAppointmentsPrefix(
                 output.appointment.customerId,
+              ),
+              CacheKeyGenerator.customerAppointmentsPrefix(
+                output.appointment.barberId,
               ),
               CacheKeyGenerator.todayAppointmentsPrefix(),
               CacheKeyGenerator.futureAppointmentsPrefix(),
@@ -214,11 +227,15 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       provide: ListCustomerAppointmentsUseCase,
       useFactory: (
         appointmentRepository: AppointmentRepository,
+        userRepository: UserRepository,
         cacheManager: CacheManager,
         cachePolicy: CachePolicy,
       ) =>
         new CachedUseCase(
-          new ListCustomerAppointmentsUseCase(appointmentRepository),
+          new ListCustomerAppointmentsUseCase(
+            appointmentRepository,
+            userRepository,
+          ),
           cacheManager,
           cachePolicy,
           {
@@ -226,12 +243,17 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
             // Mirrors ListCustomerAppointmentsUseCase's own DEFAULT_PAGE.
             buildKey: (input) =>
               CacheKeyGenerator.customerAppointments(
-                input.customerId,
+                input.requesterId,
                 input.page ?? 1,
               ),
           },
         ),
-      inject: [APPOINTMENT_REPOSITORY, CACHE_MANAGER, CACHE_POLICY],
+      inject: [
+        APPOINTMENT_REPOSITORY,
+        USER_REPOSITORY,
+        CACHE_MANAGER,
+        CACHE_POLICY,
+      ],
     },
     {
       provide: ListTodayAppointmentsUseCase,
