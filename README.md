@@ -644,7 +644,7 @@ Um **índice único parcial**: só considera linhas com `status = 'SCHEDULED'`. 
 | `BARBERS_LIST` | 5 min | `ListBarbersUseCase` | `barbers:list:{page}` |
 | `QUALIFICATIONS` | 15 min | `ListQualificationsUseCase` | `qualifications` (chave única, lista global) |
 | `APPOINTMENT` | 1 min | `GetAppointmentUseCase` | `appointment:{id}:{requesterId}` (**escopada por requester**) |
-| `CUSTOMER_APPOINTMENTS` | 1 min | `ListCustomerAppointmentsUseCase` | `appointments:{customerId}:{page}` |
+| `CUSTOMER_APPOINTMENTS` | 1 min | `ListCustomerAppointmentsUseCase` | `appointments:{requesterId}:{page}` (mesmo namespace para um `CLIENT` listando como cliente ou um `BARBER` listando como cliente **e** profissional — ver seção 11.6) |
 | `TODAY_APPOINTMENTS` | 1 min | `ListTodayAppointmentsUseCase` | `appointments:today:{page}` |
 | `FUTURE_APPOINTMENTS` | 1 min | `ListFutureAppointmentsUseCase` | `appointments:future:{page}` |
 | `AVAILABLE_TIME_SLOTS` | 30 s | `ListAvailableTimeSlotsUseCase` | `time-slots:{barberId}:{data}:{qualificationId}` |
@@ -662,7 +662,7 @@ Essas chaves **não** incluem o id do requester, ao contrário de `APPOINTMENT` 
 
 Toda escrita relevante invalida por **prefixo** (`deleteByPrefix`, via `SCAN` + `DEL` em lote, nunca `KEYS *` bloqueante), não por chave exata — porque uma escrita normalmente invalida várias páginas/variações de uma vez:
 
-- `CreateAppointmentUseCase`/`CancelAppointmentUseCase` invalidam: o slot de horário do barbeiro no dia (`barberTimeSlotsPrefix`), a lista de agendamentos do cliente (`customerAppointmentsPrefix`), **e** `todayAppointmentsPrefix()`/`futureAppointmentsPrefix()` — confirmado necessário porque a query real (`findByDate`/`findUpcoming`) não filtra por status, então até um agendamento cancelado continua aparecendo nessas listas.
+- `CreateAppointmentUseCase`/`CancelAppointmentUseCase` invalidam: o slot de horário do barbeiro no dia (`barberTimeSlotsPrefix`), a lista de agendamentos do cliente **e** a lista de agendamentos do barbeiro (`customerAppointmentsPrefix`, aplicado a `customerId` e a `barberId` — mesmo prefixo, já que a chave de `CUSTOMER_APPOINTMENTS` é por `requesterId`, não por papel; ver seção 11.6), **e** `todayAppointmentsPrefix()`/`futureAppointmentsPrefix()` — confirmado necessário porque a query real (`findByDate`/`findUpcoming`) não filtra por status, então até um agendamento cancelado continua aparecendo nessas listas.
 - `CreateBarberUseCase`/`UpdateBarberUseCase`/`AddQualificationToBarberUseCase`/`RemoveQualificationFromBarberUseCase` invalidam `barber:{id}` e `barbers:list:*`.
 - `CreateQualificationUseCase`/`UpdateQualificationUseCase`/`DeleteQualificationUseCase` invalidam a chave única `qualifications`.
 - `ChangePasswordUseCase`/`ChangeUserRoleUseCase`/`DeactivateUserUseCase`/`ActivateUserUseCase` invalidam `user:{id}`.
@@ -892,7 +892,8 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | Sem double-booking | Checado na Application (`AvailabilityService.isBarberAvailable`, dentro de uma transação) **e** garantido no banco pelo índice único parcial (seção 8.3) — dupla camada de proteção |
 | Barbeiro precisa ter a qualificação pedida | `BarberDoesNotHaveQualificationError` |
 | **Um `BARBER` pode reservar um horário com outro `BARBER`** | `POST /appointments` é `@Auth()` sem restrição de papel — `customerId` é sempre o requester autenticado, e `CreateAppointmentUseCase` só exige que ele exista e esteja ativo (`UserNotFoundError` senão), sem checar `role`. Um usuário com `role=BARBER` age como cliente normalmente ao reservar com qualquer outro barbeiro |
-| **Um `BARBER` lista/gerencia seus próprios agendamentos como cliente normalmente** | `GET /appointments/me` (`ListCustomerAppointmentsUseCase`) e `GET /appointments/:id`/`DELETE /appointments/:id` filtram só por `customerId === requester.id`, nunca por papel — inclui agendamentos feitos com outros barbeiros |
+| **Um `BARBER` lista/gerencia seus próprios agendamentos como cliente normalmente** | `GET /appointments/:id`/`DELETE /appointments/:id` continuam liberando pelo `customerId === requester.id` — inclui agendamentos feitos com outros barbeiros |
+| **Um `BARBER` também vê e acessa os agendamentos em que é o profissional** | `GetAppointmentUseCase` libera acesso quando `barberId === requester.id`, além de `customerId === requester.id` ou admin. `GET /appointments/me` (`ListCustomerAppointmentsUseCase`) faz o mesmo na listagem: quando o requester é `BARBER`, busca por `customerId` **e** por `barberId` e mescla o resultado (dedup por id, ordenado por `startAt`) — necessário porque um `BARBER` pode se auto-agendar (regra acima), o que deixaria `customerId === barberId` no mesmo registro e duplicaria a entrada se as duas buscas fossem simplesmente concatenadas. Um `CLIENT` continua paginado só por `customerId`, sem essa mesclagem |
 | Cancelamento pelo cliente é só do próprio agendamento | `CancelAppointmentUseCase` (`DELETE /appointments/:id`) não permite admin cancelar em nome de outro — só o `customerId` dono do agendamento; continua respeitando a janela mínima de 2h; cliente notificado por e-mail confirmando o cancelamento (`AppointmentCancelledEvent`) |
 | **ADMIN pode cancelar qualquer agendamento, com motivo obrigatório** | `CancelAppointmentByAdminUseCase` (`PATCH /appointments/:id/cancel`) — **ignora** a janela mínima de 2h (`cancelByAdmin`, distinto de `cancel`), motivo obrigatório (`CancellationReasonRequiredError` senão) persistido em `cancellation_reason`, cliente notificado por e-mail (`AppointmentCancelledByAdminEvent`) |
 | Não é possível reservar um horário em que o barbeiro está marcado como indisponível | `BarberUnavailableError` (409, distinto de `BarberTimeSlotConflictError`) — checado via `AvailabilityService.isBarberUnavailable` dentro da mesma transação da checagem de conflito |
@@ -960,7 +961,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
-| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, `BARBER` reservando com outro `BARBER` e listando via `/me` |
+| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, `BARBER` reservando com outro `BARBER` e listando via `/me`, `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403), auto-agendamento sem duplicar na listagem |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
 
 **42 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.
@@ -1042,7 +1043,7 @@ npm run test:e2e
 - `RolesGuard` — usado via `@Auth(...roles)`; sem roles declaradas, qualquer usuário autenticado passa.
 - `SelfOrAdminGuard` — usado via `@SelfOrAdmin()`, para rotas `:id` onde o dono da conta ou um admin podem agir (ex.: `GET /users/:id`, `PATCH /users/:id/password`).
 - `SelfGuard` — usado via `@Self()`, para rotas `:id` restritas só ao dono da conta, sem bypass de admin (ex.: `PATCH /users/:id/profile`).
-- Regras adicionais de autorização vivem **na Application**, não só no guard: `ensureRequesterIsAdmin` (reimplementada por módulo, consolidada em `shared/application/policies/`) para operações administrativas dentro de use cases; `GetAppointmentUseCase` permite dono OU admin; `CancelAppointmentUseCase` permite só o dono (nem admin).
+- Regras adicionais de autorização vivem **na Application**, não só no guard: `ensureRequesterIsAdmin` (reimplementada por módulo, consolidada em `shared/application/policies/`) para operações administrativas dentro de use cases; `GetAppointmentUseCase` permite dono (customer OU barber) OU admin; `CancelAppointmentUseCase` permite só o dono (nem admin).
 
 ### Criptografia e hashing
 

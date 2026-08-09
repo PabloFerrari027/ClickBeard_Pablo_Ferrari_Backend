@@ -4,6 +4,7 @@ import request from 'supertest';
 import { UserRole } from '../src/modules/identity/core/domain/enums/user-role.enum';
 import {
   authHeader,
+  completeLogin,
   getAdminSession,
   promoteUser,
   registerAndLogin,
@@ -173,6 +174,105 @@ describe('Appointments (e2e)', () => {
           expect.objectContaining({ id: created.body.id, barberId }),
         ]),
       );
+    });
+  });
+
+  describe('GET /appointments/me and /appointments/:id for the assigned barber', () => {
+    async function registerBarber(): Promise<{
+      barberProfileId: string;
+      session: Session;
+      userId: string;
+    }> {
+      const barberUser = await registerUser(app);
+      await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
+      const barberProfile = await request(app.getHttpServer())
+        .post('/barbers')
+        .set(authHeader(admin.accessToken))
+        .send({
+          email: barberUser.email,
+          age: 30,
+          hiredAt: '2025-01-01T00:00:00.000Z',
+          qualificationIds: [qualificationId],
+        });
+      const session = await completeLogin(
+        app,
+        notifications,
+        barberUser.email,
+        barberUser.password,
+      );
+
+      return {
+        barberProfileId: barberProfile.body.id as string,
+        session,
+        userId: barberUser.id,
+      };
+    }
+
+    it("includes an appointment booked by a client in the assigned barber's own listing, and lets them fetch it by id while a stranger is denied", async () => {
+      const { barberProfileId, session: barberSession } =
+        await registerBarber();
+      const { session: clientSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const startAt = await findBookableSlot(clientSession.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(clientSession.accessToken))
+        .send({ barberId: barberProfileId, qualificationId, startAt })
+        .expect(201);
+
+      const mine = await request(app.getHttpServer())
+        .get('/appointments/me')
+        .set(authHeader(barberSession.accessToken));
+      expect(mine.status).toBe(200);
+      expect(mine.body.appointments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: created.body.id }),
+        ]),
+      );
+
+      const getById = await request(app.getHttpServer())
+        .get(`/appointments/${created.body.id}`)
+        .set(authHeader(barberSession.accessToken));
+      expect(getById.status).toBe(200);
+
+      const { session: strangerSession } = await registerAndLogin(
+        app,
+        notifications,
+      );
+      const strangerGetById = await request(app.getHttpServer())
+        .get(`/appointments/${created.body.id}`)
+        .set(authHeader(strangerSession.accessToken));
+      expect(strangerGetById.status).toBe(403);
+    });
+
+    it('does not duplicate a self-booked appointment (barber as both customer and professional) in the listing', async () => {
+      const {
+        barberProfileId,
+        session: barberSession,
+        userId,
+      } = await registerBarber();
+      const startAt = await findBookableSlot(barberSession.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(barberSession.accessToken))
+        .send({ barberId: barberProfileId, qualificationId, startAt })
+        .expect(201);
+      expect(created.body.customerId).toBe(userId);
+      expect(created.body.barberId).toBe(barberProfileId);
+
+      const mine = await request(app.getHttpServer())
+        .get('/appointments/me')
+        .set(authHeader(barberSession.accessToken));
+      expect(mine.status).toBe(200);
+
+      const matches = (mine.body.appointments as Array<{ id: string }>).filter(
+        (appointment) => appointment.id === created.body.id,
+      );
+      expect(matches).toHaveLength(1);
     });
   });
 

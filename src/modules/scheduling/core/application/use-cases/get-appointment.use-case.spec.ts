@@ -49,6 +49,7 @@ describe('GetAppointmentUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByCustomerId: jest.fn(),
+      findByBarberId: jest.fn(),
       findByDate: jest.fn(),
       findUpcoming: jest.fn(),
       findScheduledByBarberAndRange: jest.fn(),
@@ -72,6 +73,32 @@ describe('GetAppointmentUseCase', () => {
 
     expect(result.appointment.id).toBe('appointment-id');
     expect(userRepository.findById).not.toHaveBeenCalled();
+  });
+
+  it('returns the appointment when the requester is the assigned barber', async () => {
+    appointmentRepository.findById.mockResolvedValue(buildAppointment());
+
+    const result = await useCase.execute({
+      appointmentId: 'appointment-id',
+      requesterId: 'barber-id',
+    });
+
+    expect(result.appointment.id).toBe('appointment-id');
+    expect(userRepository.findById).not.toHaveBeenCalled();
+  });
+
+  it('throws AppointmentAccessDeniedError for a different barber', async () => {
+    appointmentRepository.findById.mockResolvedValue(buildAppointment());
+    userRepository.findById.mockResolvedValue(
+      buildUser('other-barber-id', UserRole.BARBER),
+    );
+
+    await expect(
+      useCase.execute({
+        appointmentId: 'appointment-id',
+        requesterId: 'other-barber-id',
+      }),
+    ).rejects.toThrow(AppointmentAccessDeniedError);
   });
 
   it('returns the appointment when the requester is an admin', async () => {
