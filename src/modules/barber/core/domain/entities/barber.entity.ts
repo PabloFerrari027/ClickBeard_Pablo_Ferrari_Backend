@@ -10,6 +10,7 @@ export interface BarberProps {
   age: Age;
   hiredAt: Date;
   qualificationIds: string[];
+  active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +21,7 @@ export class Barber {
   private age: Age;
   private hiredAt: Date;
   private qualificationIds: string[];
+  private active: boolean;
   private readonly createdAt: Date;
   private updatedAt: Date;
 
@@ -29,6 +31,7 @@ export class Barber {
     this.age = props.age;
     this.hiredAt = props.hiredAt;
     this.qualificationIds = props.qualificationIds;
+    this.active = props.active;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
@@ -54,6 +57,7 @@ export class Barber {
       age: props.age,
       hiredAt: Barber.validateHiredAt(props.hiredAt),
       qualificationIds: uniqueQualificationIds,
+      active: true,
       createdAt: now,
       updatedAt: now,
     });
@@ -103,6 +107,22 @@ export class Barber {
       (id) => id !== qualificationId,
     );
     this.touch();
+  }
+
+  /** Drops the profile out of search/booking without losing its data — see `reactivate`. */
+  deactivate(): void {
+    this.active = false;
+    this.touch();
+  }
+
+  /** Restores a demoted-then-promoted-again barber's original profile as-is, untouched since `deactivate`. */
+  reactivate(): void {
+    this.active = true;
+    this.touch();
+  }
+
+  isActive(): boolean {
+    return this.active;
   }
 
   private touch(): void {

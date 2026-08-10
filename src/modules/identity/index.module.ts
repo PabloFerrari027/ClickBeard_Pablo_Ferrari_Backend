@@ -158,17 +158,18 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
       provide: ChangeUserRoleUseCase,
       useFactory: (
         userRepository: UserRepository,
+        eventBus: EventBus,
         cacheInvalidationService: CacheInvalidationService,
       ) =>
         new CacheInvalidatingUseCase(
-          new ChangeUserRoleUseCase(userRepository),
+          new ChangeUserRoleUseCase(userRepository, eventBus),
           cacheInvalidationService,
           {
             buildKeys: (input) => [CacheKeyGenerator.userProfile(input.userId)],
             buildPrefixes: () => [CacheKeyGenerator.usersListPrefix()],
           },
         ),
-      inject: [USER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
+      inject: [USER_REPOSITORY, EVENT_BUS, CACHE_INVALIDATION_SERVICE],
     },
     {
       provide: DeactivateUserUseCase,

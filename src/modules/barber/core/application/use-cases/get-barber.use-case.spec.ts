@@ -55,4 +55,20 @@ describe('GetBarberUseCase', () => {
       BarberNotFoundError,
     );
   });
+
+  it('throws BarberNotFoundError when the barber is inactive', async () => {
+    const barber = Barber.create({
+      userId: 'barber-id',
+      name: 'John Barber',
+      age: Age.create(30),
+      hiredAt: new Date('2025-01-01T00:00:00.000Z'),
+      qualificationIds: ['qualification-id'],
+    });
+    barber.deactivate();
+    barberRepository.findById.mockResolvedValue(barber);
+
+    await expect(useCase.execute({ barberId: 'barber-id' })).rejects.toThrow(
+      BarberNotFoundError,
+    );
+  });
 });

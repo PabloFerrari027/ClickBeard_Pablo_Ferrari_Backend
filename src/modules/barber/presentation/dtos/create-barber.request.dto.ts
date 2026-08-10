@@ -10,7 +10,10 @@ import {
 } from 'class-validator';
 
 export class CreateBarberRequestDto {
-  @ApiProperty({ description: 'Email of the identity user becoming a barber' })
+  @ApiProperty({
+    description:
+      'Email of an existing CLIENT identity user; they are promoted to BARBER as part of this call',
+  })
   @IsEmail()
   email: string;
 

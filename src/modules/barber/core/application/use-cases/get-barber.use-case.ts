@@ -17,7 +17,7 @@ export class GetBarberUseCase implements UseCase<
   async execute(input: GetBarberInputDto): Promise<GetBarberOutputDto> {
     const barber = await this.barberRepository.findById(input.barberId);
 
-    if (!barber) {
+    if (!barber || !barber.isActive()) {
       throw new BarberNotFoundError();
     }
 

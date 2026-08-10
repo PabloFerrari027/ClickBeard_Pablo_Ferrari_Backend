@@ -35,7 +35,6 @@ describe('Appointments (e2e)', () => {
     qualificationId = qualification.body.id as string;
 
     const barberUser = await registerUser(app);
-    await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
     const barber = await request(app.getHttpServer())
       .post('/barbers')
       .set(authHeader(admin.accessToken))
@@ -93,6 +92,49 @@ describe('Appointments (e2e)', () => {
     );
   }
 
+  /**
+   * Creates a barber, demotes them back to CLIENT, and polls until their
+   * barber profile is deactivated — deactivation runs off the async
+   * `UserRoleChanged` event (see `UserRoleChangedConsumer`), not the
+   * demotion request itself.
+   */
+  async function createDeactivatedBarberId(): Promise<string> {
+    const barberUser = await registerUser(app);
+    const barber = await request(app.getHttpServer())
+      .post('/barbers')
+      .set(authHeader(admin.accessToken))
+      .send({
+        email: barberUser.email,
+        age: 30,
+        hiredAt: '2025-01-01T00:00:00.000Z',
+        qualificationIds: [qualificationId],
+      });
+    const deactivatedBarberId = barber.body.id as string;
+
+    await promoteUser(app, admin, deactivatedBarberId, UserRole.CLIENT);
+
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const response = await request(app.getHttpServer())
+        .get(`/barbers/${deactivatedBarberId}`)
+        .set(authHeader(admin.accessToken));
+
+      if (response.status === 404) {
+        break;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Timed out waiting for barber ${deactivatedBarberId} to be deactivated`,
+        );
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return deactivatedBarberId;
+  }
+
   describe('GET /appointments/time-slots', () => {
     it('rejects an unauthenticated request with 401', async () => {
       const response = await request(app.getHttpServer())
@@ -145,13 +187,36 @@ describe('Appointments (e2e)', () => {
       expect(response.body.barberId).toBe(barberId);
       expect(response.body.status).toBe('SCHEDULED');
     });
+
+    it('rejects booking a barber who was demoted back to CLIENT', async () => {
+      const deactivatedBarberId = await createDeactivatedBarberId();
+      const { session } = await registerAndLogin(app, notifications);
+      const startAt = await findBookableSlot(session.accessToken);
+
+      const response = await request(app.getHttpServer())
+        .post('/appointments')
+        .set(authHeader(session.accessToken))
+        .send({ barberId: deactivatedBarberId, qualificationId, startAt });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('BarberNotFoundError');
+    });
   });
 
   describe('Barbers booking with other barbers', () => {
     it('lets a BARBER-role user book an appointment with another barber and list it via /me', async () => {
       const { user: barberUser, session: barberSession } =
         await registerAndLogin(app, notifications);
-      await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
+      await request(app.getHttpServer())
+        .post('/barbers')
+        .set(authHeader(admin.accessToken))
+        .send({
+          email: barberUser.email,
+          age: 30,
+          hiredAt: '2025-01-01T00:00:00.000Z',
+          qualificationIds: [qualificationId],
+        })
+        .expect(201);
 
       const startAt = await findBookableSlot(barberSession.accessToken);
 
@@ -184,7 +249,6 @@ describe('Appointments (e2e)', () => {
       userId: string;
     }> {
       const barberUser = await registerUser(app);
-      await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
       const barberProfile = await request(app.getHttpServer())
         .post('/barbers')
         .set(authHeader(admin.accessToken))
@@ -525,7 +589,6 @@ describe('Appointments (e2e)', () => {
 
     beforeAll(async () => {
       const barberUser = await registerUser(app);
-      await promoteUser(app, admin, barberUser.id, UserRole.BARBER);
       const barber = await request(app.getHttpServer())
         .post('/barbers')
         .set(authHeader(admin.accessToken))

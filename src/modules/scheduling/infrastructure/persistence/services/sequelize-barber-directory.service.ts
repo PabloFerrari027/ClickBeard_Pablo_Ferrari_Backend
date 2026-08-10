@@ -33,7 +33,7 @@ export class SequelizeBarberDirectoryService implements BarberDirectory {
       const rows = await this.sequelize.query<BarberSnapshotRow>(
         `SELECT
            b.id AS "id",
-           u.active AS "active",
+           (u.active AND b.active) AS "active",
            COALESCE(
              array_agg(bq.qualification_id) FILTER (WHERE bq.qualification_id IS NOT NULL),
              '{}'
@@ -42,7 +42,7 @@ export class SequelizeBarberDirectoryService implements BarberDirectory {
          INNER JOIN "users" u ON u.id = b.id
          LEFT JOIN "barbers_qualifications" bq ON bq.barber_id = b.id
          WHERE b.id = :barberId
-         GROUP BY b.id, u.active`,
+         GROUP BY b.id, u.active, b.active`,
         {
           replacements: { barberId },
           type: QueryTypes.SELECT,
