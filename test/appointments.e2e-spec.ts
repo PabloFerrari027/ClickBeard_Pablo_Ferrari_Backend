@@ -57,10 +57,10 @@ describe('Appointments (e2e)', () => {
    * using the server's local timezone, which this suite cannot assume —
    * so instead of computing a date and hoping it has open slots, it asks
    * the real server across the next few days and books whatever it
-   * actually reports as available. Availability itself only filters out
-   * past slots, not `CreateAppointmentUseCase`'s separate 2-hour minimum
-   * booking notice (`MIN_APPOINTMENT_NOTICE_MS`), so this also skips
-   * anything closer than that.
+   * actually reports as available. Booking itself has no minimum notice
+   * (only that the slot can't already be in the past), but a small buffer
+   * is kept here so the slot doesn't tip into the past between fetching
+   * the list and issuing the booking request.
    */
   async function findBookableSlot(token: string): Promise<string> {
     const now = Date.now();
@@ -572,8 +572,8 @@ describe('Appointments (e2e)', () => {
       const { session } = await registerAndLogin(app, notifications);
 
       // Tomorrow at 09:00 local time: always grid-aligned (top of the
-      // hour), within business hours, and well past the 2h minimum
-      // notice — so this fails on unavailability, not slot alignment.
+      // hour) and within business hours — so this fails on
+      // unavailability, not slot alignment.
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(9, 0, 0, 0);

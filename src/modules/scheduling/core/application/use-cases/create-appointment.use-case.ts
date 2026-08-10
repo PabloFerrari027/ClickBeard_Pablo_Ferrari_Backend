@@ -6,10 +6,7 @@ import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error'
 import { BarberTimeSlotConflictError } from '../../domain/errors/barber-time-slot-conflict.error';
 import { BarberUnavailableError } from '../../domain/errors/barber-unavailable.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
-import {
-  Appointment,
-  MIN_APPOINTMENT_NOTICE_MS,
-} from '../../domain/entities/appointment.entity';
+import { Appointment } from '../../domain/entities/appointment.entity';
 import { AppointmentCreatedEvent } from '../../domain/events/appointment-created.event';
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import {
@@ -63,9 +60,7 @@ export class CreateAppointmentUseCase implements UseCase<
     const timeSlot = TimeSlot.create(input.startAt);
     const now = new Date();
 
-    const noticeMs = timeSlot.getStart().getTime() - now.getTime();
-
-    if (noticeMs < MIN_APPOINTMENT_NOTICE_MS) {
+    if (timeSlot.getStart().getTime() < now.getTime()) {
       throw new AppointmentTooSoonError();
     }
 

@@ -7,9 +7,8 @@ import { AppointmentStatus } from '../enums/appointment-status.enum';
 import { TimeSlot } from '../value-objects/time-slot.value-object';
 
 /**
- * The 2-hour minimum notice applies symmetrically: a customer can't book
- * a slot starting sooner than this from now, and can't cancel a slot
- * that's sooner than this away either.
+ * Minimum notice required to cancel a slot (booking has no such minimum —
+ * only that the slot can't start in the past).
  */
 export const MIN_APPOINTMENT_NOTICE_MS = 2 * 60 * 60 * 1000;
 
