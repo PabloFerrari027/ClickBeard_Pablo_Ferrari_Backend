@@ -9,18 +9,18 @@ jobs:
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
-
     steps:
       - name: Deploy application
         uses: appleboy/ssh-action@v1.2.2
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-
+          envs: SECRETS_JSON
           script: |
             set -e
-
             echo "========================================="
             echo "Starting ClickBeard deployment"
             echo "========================================="
@@ -28,43 +28,35 @@ jobs:
             cd /home/ec2-user/apps/clickbeard
 
             echo "Updating repository..."
-
             git fetch origin main
             git reset --hard origin/main
 
-            echo "Configuring production environment..."
-
-            cat > .env << 'EOF'
-            DB_USER=${{ secrets.DB_USER }}
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            DB_NAME=${{ secrets.DB_NAME }}
-
-            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-
-            PORT=${{ secrets.PORT }}
-
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            EOF
-
+            echo "Configuring production environment from .env.example..."
+            > .env
+            while IFS= read -r line; do
+              case "$line" in
+                ''|'#'*) continue ;;
+              esac
+              key="${line%%=*}"
+              default_val="${line#*=}"
+              val=$(echo "$SECRETS_JSON" | jq -r --arg k "$key" '.[$k] // empty')
+              [ -z "$val" ] && val="$default_val"
+              echo "${key}=${val}" >> .env
+            done < .env.example
             chmod 600 .env
-
             echo "Production environment configured."
 
             echo "Building Docker images..."
-
             docker compose -f docker-compose.prod.yml build
 
             echo "Starting database and Redis..."
-
             docker compose -f docker-compose.prod.yml up -d postgres redis
 
             echo "Waiting for services..."
-
             for i in {1..30}; do
               POSTGRES_STATUS=$(docker inspect \
                 --format='{{.State.Health.Status}}' \
                 clickbeard-postgres 2>/dev/null || true)
-
               REDIS_STATUS=$(docker inspect \
                 --format='{{.State.Health.Status}}' \
                 clickbeard-redis 2>/dev/null || true)
@@ -76,35 +68,27 @@ jobs:
 
               if [ "$i" -eq 30 ]; then
                 echo "Database/Redis did not become healthy in time."
-
                 docker compose -f docker-compose.prod.yml ps
-
                 exit 1
               fi
 
               echo "Waiting for PostgreSQL and Redis... ($i/30)"
-
               sleep 2
             done
 
             echo "Running migrations..."
-
             docker compose -f docker-compose.prod.yml run --rm database-migration \
               npx sequelize-cli db:migrate
 
             echo "Running database seed..."
-
             docker compose -f docker-compose.prod.yml run --rm database-migration \
               npx sequelize-cli db:seed:all
 
             echo "Starting application..."
-
             docker compose -f docker-compose.prod.yml up -d app
 
             echo "Waiting for API to become healthy..."
-
             API_HEALTHY=false
-
             for i in {1..30}; do
               if curl \
                 --fail \
@@ -113,18 +97,12 @@ jobs:
                 --max-time 5 \
                 http://127.0.0.1:3000/health \
                 > /tmp/clickbeard-health.json; then
-
                 echo "API health check passed."
-
                 cat /tmp/clickbeard-health.json
-
                 API_HEALTHY=true
-
                 break
               fi
-
               echo "API is not ready yet. Attempt $i/30..."
-
               sleep 2
             done
 
@@ -132,24 +110,17 @@ jobs:
               echo "========================================="
               echo "API health check failed"
               echo "========================================="
-
               echo "Container status:"
-
               docker compose -f docker-compose.prod.yml ps
-
               echo "API container logs:"
-
               docker logs --tail 200 clickbeard-api || true
-
               exit 1
             fi
 
             echo "Cleaning unused Docker resources..."
-
             docker image prune -f
 
             echo "Checking containers..."
-
             docker compose -f docker-compose.prod.yml ps
 
             echo "========================================="
