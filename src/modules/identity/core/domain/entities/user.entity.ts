@@ -78,13 +78,24 @@ export class User {
   }
 
   private static validateName(name: string): string {
-    const trimmed = name.trim();
+    const trimmed = name.trim().replace(/\s+/g, ' ');
 
     if (trimmed.length < MIN_NAME_LENGTH) {
       throw new InvalidNameError();
     }
 
-    return trimmed;
+    return User.formatName(trimmed);
+  }
+
+  private static formatName(name: string): string {
+    return name
+      .split(' ')
+      .map(
+        (word) =>
+          word.charAt(0).toLocaleUpperCase('pt-BR') +
+          word.slice(1).toLocaleLowerCase('pt-BR'),
+      )
+      .join(' ');
   }
 
   changeName(newName: string): void {

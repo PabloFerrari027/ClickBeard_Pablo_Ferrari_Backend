@@ -92,6 +92,26 @@ describe('User', () => {
       expect(user.getName()).toBe('Jane Doe');
     });
 
+    it('formats the name to capitalized words regardless of the input casing', () => {
+      const user = User.create({
+        name: 'pablo ferrari',
+        email: Email.create('pablo@example.com'),
+        password: Password.fromHash('hashed-password'),
+      });
+
+      expect(user.getName()).toBe('Pablo Ferrari');
+    });
+
+    it('collapses repeated inner whitespace when formatting the name', () => {
+      const user = User.create({
+        name: 'JOHN   VAN   DOE',
+        email: Email.create('john-van@example.com'),
+        password: Password.fromHash('hashed-password'),
+      });
+
+      expect(user.getName()).toBe('John Van Doe');
+    });
+
     it('throws InvalidNameError when the trimmed name is shorter than 2 characters', () => {
       expect(() =>
         User.create({
@@ -136,7 +156,7 @@ describe('User', () => {
       const user = User.restore(buildProps());
 
       jest.setSystemTime(new Date('2026-01-02T00:00:00.000Z'));
-      user.changeName('  New Name  ');
+      user.changeName('  new NAME  ');
 
       expect(user.getName()).toBe('New Name');
       expect(user.getUpdatedAt()).toEqual(new Date('2026-01-02T00:00:00.000Z'));
