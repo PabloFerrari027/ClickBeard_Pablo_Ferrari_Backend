@@ -146,6 +146,28 @@ export async function completeLogin(
   };
 }
 
+/**
+ * Registration alone already triggers its own verification code email
+ * (see VerificationCodeRequestConsumer) — draining it before any
+ * subsequent login flow captures its own `since` marker guarantees that
+ * marker excludes it instead of racing its (asynchronous, BullMQ-
+ * driven) arrival. Without this, a poll right after login could match
+ * that earlier, eventually-invalidated code instead of the one login
+ * just generated. Call this after `registerUser` and before
+ * `completeLogin` whenever they aren't already combined via
+ * `registerAndLogin`.
+ */
+export async function drainRegistrationVerificationEmail(
+  notifications: NotificationSenderSpy,
+  email: string,
+): Promise<void> {
+  await notifications.waitFor(
+    (candidate) =>
+      candidate.recipient === email &&
+      candidate.subject === VERIFICATION_CODE_SUBJECT,
+  );
+}
+
 export async function registerAndLogin(
   app: INestApplication,
   notifications: NotificationSenderSpy,
@@ -153,16 +175,7 @@ export async function registerAndLogin(
 ): Promise<{ user: RegisteredUser; session: Session }> {
   const user = await registerUser(app, overrides);
 
-  // Registration alone already triggers its own verification code email
-  // (see VerificationCodeRequestConsumer) — draining it here, before
-  // `completeLogin` snapshots its own `since` marker, guarantees that
-  // marker excludes it instead of racing its (asynchronous, BullMQ-
-  // driven) arrival.
-  await notifications.waitFor(
-    (candidate) =>
-      candidate.recipient === user.email &&
-      candidate.subject === VERIFICATION_CODE_SUBJECT,
-  );
+  await drainRegistrationVerificationEmail(notifications, user.email);
 
   const session = await completeLogin(
     app,

@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
 import {
+  drainRegistrationVerificationEmail,
   extractVerificationCode,
   registerUser,
-  VERIFICATION_CODE_SUBJECT,
 } from './support/api.helpers';
 import { NotificationSenderSpy } from './support/notification-sender.spy';
 import { createTestApp } from './support/test-app';
@@ -21,20 +21,8 @@ describe('Account Verification (e2e)', () => {
     await app.close();
   });
 
-  /**
-   * Registration alone already triggers its own verification code email
-   * (see `VerificationCodeRequestConsumer`) — draining it first, before
-   * capturing the `since` marker, guarantees `since` excludes it instead
-   * of racing its (asynchronous, BullMQ-driven) arrival. Without this, a
-   * poll right after login could match that earlier, now-invalidated
-   * code instead of the one login just generated.
-   */
   async function loginAndGetUserId(email: string, password: string) {
-    await notifications.waitFor(
-      (candidate) =>
-        candidate.recipient === email &&
-        candidate.subject === VERIFICATION_CODE_SUBJECT,
-    );
+    await drainRegistrationVerificationEmail(notifications, email);
 
     const since = notifications.count();
 

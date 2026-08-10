@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
-import { completeLogin, registerUser } from './support/api.helpers';
+import {
+  completeLogin,
+  drainRegistrationVerificationEmail,
+  registerUser,
+} from './support/api.helpers';
 import { NotificationSenderSpy } from './support/notification-sender.spy';
 import { createTestApp } from './support/test-app';
 
@@ -43,6 +47,7 @@ describe('Auth (e2e)', () => {
   describe('Full login -> verify -> complete flow', () => {
     it('issues a real access/refresh token pair once the code is validated', async () => {
       const user = await registerUser(app);
+      await drainRegistrationVerificationEmail(notifications, user.email);
 
       const session = await completeLogin(
         app,
@@ -59,6 +64,7 @@ describe('Auth (e2e)', () => {
   describe('POST /auth/refresh-token', () => {
     it('rotates a refresh token for a new token pair', async () => {
       const user = await registerUser(app);
+      await drainRegistrationVerificationEmail(notifications, user.email);
       const session = await completeLogin(
         app,
         notifications,
@@ -87,6 +93,7 @@ describe('Auth (e2e)', () => {
   describe('POST /auth/logout', () => {
     it('revokes a refresh token, which can no longer be used to refresh', async () => {
       const user = await registerUser(app);
+      await drainRegistrationVerificationEmail(notifications, user.email);
       const session = await completeLogin(
         app,
         notifications,
