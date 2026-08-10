@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
-import { extractVerificationCode, registerUser } from './support/api.helpers';
+import {
+  extractVerificationCode,
+  registerUser,
+  VERIFICATION_CODE_SUBJECT,
+} from './support/api.helpers';
 import { NotificationSenderSpy } from './support/notification-sender.spy';
 import { createTestApp } from './support/test-app';
 
@@ -17,13 +21,29 @@ describe('Account Verification (e2e)', () => {
     await app.close();
   });
 
+  /**
+   * Registration alone already triggers its own verification code email
+   * (see `VerificationCodeRequestConsumer`) — draining it first, before
+   * capturing the `since` marker, guarantees `since` excludes it instead
+   * of racing its (asynchronous, BullMQ-driven) arrival. Without this, a
+   * poll right after login could match that earlier, now-invalidated
+   * code instead of the one login just generated.
+   */
   async function loginAndGetUserId(email: string, password: string) {
+    await notifications.waitFor(
+      (candidate) =>
+        candidate.recipient === email &&
+        candidate.subject === VERIFICATION_CODE_SUBJECT,
+    );
+
+    const since = notifications.count();
+
     const response = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ email, password })
       .expect(200);
 
-    return response.body.user.id as string;
+    return { userId: response.body.user.id as string, since };
   }
 
   describe('POST /account-verification/validate', () => {
@@ -41,12 +61,16 @@ describe('Account Verification (e2e)', () => {
 
     it('maps InvalidVerificationCodeError to 400 for a wrong code', async () => {
       const user = await registerUser(app);
-      const userId = await loginAndGetUserId(user.email, user.password);
+      const { userId, since } = await loginAndGetUserId(
+        user.email,
+        user.password,
+      );
 
       await notifications.waitFor(
         (n) =>
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
+        { since },
       );
 
       const response = await request(app.getHttpServer())
@@ -59,12 +83,16 @@ describe('Account Verification (e2e)', () => {
 
     it('accepts the correct code', async () => {
       const user = await registerUser(app);
-      const userId = await loginAndGetUserId(user.email, user.password);
+      const { userId, since } = await loginAndGetUserId(
+        user.email,
+        user.password,
+      );
 
       const notification = await notifications.waitFor(
         (n) =>
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
+        { since },
       );
       const code = extractVerificationCode(notification.body);
 
@@ -80,7 +108,7 @@ describe('Account Verification (e2e)', () => {
   describe('POST /account-verification/complete', () => {
     it('maps VerificationNotCompletedError to 400 when validation never ran', async () => {
       const user = await registerUser(app);
-      const userId = await loginAndGetUserId(user.email, user.password);
+      const { userId } = await loginAndGetUserId(user.email, user.password);
 
       const response = await request(app.getHttpServer())
         .post('/account-verification/complete')
@@ -92,12 +120,16 @@ describe('Account Verification (e2e)', () => {
 
     it('issues a token pair once the code has been validated', async () => {
       const user = await registerUser(app);
-      const userId = await loginAndGetUserId(user.email, user.password);
+      const { userId, since } = await loginAndGetUserId(
+        user.email,
+        user.password,
+      );
 
       const notification = await notifications.waitFor(
         (n) =>
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
+        { since },
       );
       const code = extractVerificationCode(notification.body);
 
@@ -119,12 +151,16 @@ describe('Account Verification (e2e)', () => {
   describe('POST /account-verification/resend', () => {
     it('invalidates the previous code and issues a new one', async () => {
       const user = await registerUser(app);
-      const userId = await loginAndGetUserId(user.email, user.password);
+      const { userId, since } = await loginAndGetUserId(
+        user.email,
+        user.password,
+      );
 
       const firstNotification = await notifications.waitFor(
         (n) =>
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code',
+        { since },
       );
       const firstCode = extractVerificationCode(firstNotification.body);
 
@@ -139,6 +175,7 @@ describe('Account Verification (e2e)', () => {
           n.recipient === user.email &&
           n.subject === 'Your ClickBeard verification code' &&
           n.body !== firstNotification.body,
+        { since },
       );
       const secondCode = extractVerificationCode(secondNotification.body);
 

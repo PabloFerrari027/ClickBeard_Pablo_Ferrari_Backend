@@ -693,12 +693,14 @@ graph LR
 
     C1 --> DEC["DomainEventsConsumer<br/>(notification)"]
     C2 --> ULC["UserLoggedInConsumer<br/>(account-verification)"]
+    C2 --> URC["UserRegisteredConsumer<br/>(account-verification)"]
     C3 --> BUC["BarberUnavailabilityCreatedConsumer<br/>(scheduling)"]
 
     DEC --> DNU["DispatchNotificationUseCase"]
     DNU -->|se existir template<br/>e recipientEmail| SMTP["SmtpNotificationSender"]
 
     ULC -->|filtra name === 'UserLoggedIn'| GVC["GenerateVerificationCodeUseCase"]
+    URC -->|filtra name === 'UserRegistered'| GVC
     BUC -->|filtra name === 'BarberUnavailabilityCreated'| CAU["CancelAppointmentsForBarberUnavailabilityUseCase"]
     CAU -->|publica AppointmentCancelledByAdmin<br/>por agendamento afetado| Bus
 ```
@@ -709,7 +711,7 @@ Por que fan-out e não uma fila única compartilhada: BullMQ é *competing consu
 
 | Evento (`name`) | Publicado por | Payload | `recipientEmail`? | Consumido por |
 |---|---|---|---|---|
-| `UserRegistered` | `RegisterUserUseCase` | `{ name }` | sim | `notification` (e-mail de boas-vindas) |
+| `UserRegistered` | `RegisterUserUseCase` | `{ userId, name }` | sim | `notification` (e-mail de boas-vindas) **e** `account-verification` (`UserRegisteredConsumer`, gera o código de verificação imediatamente — um novo cadastro não precisa esperar um primeiro login para receber o código) |
 | `PasswordChanged` | `ChangePasswordUseCase` | `{ name }` | sim | `notification` (alerta de segurança) |
 | `UserLoggedIn` | `LoginUseCase` | `{ userId, name }` | sim | `notification` (e-mail "novo login") **e** `account-verification` (`UserLoggedInConsumer`, dispara a geração do código) |
 | `VerificationCodeGenerated` | `GenerateVerificationCodeUseCase` | `{ name, code }` (código **em texto puro**, só existe neste payload em memória — no banco já está hasheado) | sim | `notification` (e-mail com o código) |
@@ -727,6 +729,8 @@ Todo e-mail transacional é enviado nos dois formatos simultaneamente: `text` (c
 ### 10.2 Fluxo completo: login → verificação → sessão
 
 O fluxo mais complexo do sistema. Login **nunca** emite token na mesma requisição — só confirma a senha e dispara, de forma assíncrona, o envio de um código por e-mail que precisa ser validado antes de qualquer sessão existir.
+
+`POST /users` (`RegisterUserUseCase`) entra nesse mesmo fluxo por um segundo caminho: publica `UserRegistered`, que `UserRegisteredConsumer` (mirror de `UserLoggedInConsumer`, mesma fila `account-verification`) também usa para acionar `GenerateVerificationCodeUseCase` — um cadastro novo já recebe o código de verificação por e-mail sem precisar de um primeiro login. Dali em diante (validação → complete → sessão) é o mesmo caminho do diagrama abaixo.
 
 ```mermaid
 sequenceDiagram

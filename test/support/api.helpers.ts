@@ -28,7 +28,7 @@ export interface RegisterOverrides {
 }
 
 const DEFAULT_PASSWORD = 'Password123';
-const VERIFICATION_CODE_SUBJECT = 'Your ClickBeard verification code';
+export const VERIFICATION_CODE_SUBJECT = 'Your ClickBeard verification code';
 // Verification codes are always 6 numeric digits (see
 // RandomVerificationCodeGenerator), so matching on digit shape is more
 // robust than pinning to the surrounding template wording.
@@ -70,9 +70,11 @@ export async function registerUser(
 }
 
 /**
- * Promotes a user to a new role via `PATCH /users/:id/role` — the only
- * path to BARBER/ADMIN now that registration always creates a CLIENT.
- * Requires an authenticated admin session.
+ * Changes a user's role via `PATCH /users/:id/role` — the only path to
+ * ADMIN (or back to CLIENT) now that registration always creates a
+ * CLIENT. Cannot be used for BARBER: that role is only granted by
+ * creating a barber profile via `POST /barbers`. Requires an
+ * authenticated admin session.
  */
 export async function promoteUser(
   app: INestApplication,
@@ -110,6 +112,8 @@ export async function completeLogin(
   email: string,
   password: string,
 ): Promise<Session> {
+  const since = notifications.count();
+
   const loginResponse = await request(app.getHttpServer())
     .post('/auth/login')
     .send({ email, password })
@@ -121,6 +125,7 @@ export async function completeLogin(
     (candidate) =>
       candidate.recipient === email &&
       candidate.subject === VERIFICATION_CODE_SUBJECT,
+    { since },
   );
   const code = extractVerificationCode(notification.body);
 
@@ -147,6 +152,18 @@ export async function registerAndLogin(
   overrides: RegisterOverrides = {},
 ): Promise<{ user: RegisteredUser; session: Session }> {
   const user = await registerUser(app, overrides);
+
+  // Registration alone already triggers its own verification code email
+  // (see VerificationCodeRequestConsumer) — draining it here, before
+  // `completeLogin` snapshots its own `since` marker, guarantees that
+  // marker excludes it instead of racing its (asynchronous, BullMQ-
+  // driven) arrival.
+  await notifications.waitFor(
+    (candidate) =>
+      candidate.recipient === user.email &&
+      candidate.subject === VERIFICATION_CODE_SUBJECT,
+  );
+
   const session = await completeLogin(
     app,
     notifications,

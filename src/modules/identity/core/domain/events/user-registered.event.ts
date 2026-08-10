@@ -2,6 +2,7 @@ import { DomainEvent } from '../../../../../shared/domain/events/domain-event';
 
 export interface UserRegisteredPayload {
   [key: string]: string;
+  userId: string;
   name: string;
 }
 

@@ -48,6 +48,7 @@ export class RegisterUserUseCase implements UseCase<
 
     await this.eventBus.publish(
       new UserRegisteredEvent(user.getEmail().getValue(), {
+        userId: user.getId(),
         name: user.getName(),
       }),
     );
