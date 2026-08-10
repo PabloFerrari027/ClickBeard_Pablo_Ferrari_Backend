@@ -28,13 +28,34 @@ jobs:
             cd /home/ec2-user/apps/clickbeard
 
             echo "Updating repository..."
+
             git fetch origin main
             git reset --hard origin/main
 
+            echo "Configuring production environment..."
+
+            cat > .env << 'EOF'
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_NAME=${{ secrets.DB_NAME }}
+
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+
+            PORT=${{ secrets.PORT }}
+
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            EOF
+
+            chmod 600 .env
+
+            echo "Production environment configured."
+
             echo "Building Docker images..."
+
             docker compose -f docker-compose.prod.yml build
 
             echo "Starting database and Redis..."
+
             docker compose -f docker-compose.prod.yml up -d postgres redis
 
             echo "Waiting for services..."
@@ -62,6 +83,7 @@ jobs:
               fi
 
               echo "Waiting for PostgreSQL and Redis... ($i/30)"
+
               sleep 2
             done
 
@@ -112,9 +134,11 @@ jobs:
               echo "========================================="
 
               echo "Container status:"
+
               docker compose -f docker-compose.prod.yml ps
 
               echo "API container logs:"
+
               docker logs --tail 200 clickbeard-api || true
 
               exit 1
