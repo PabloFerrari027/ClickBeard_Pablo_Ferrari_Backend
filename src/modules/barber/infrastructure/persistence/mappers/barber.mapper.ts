@@ -8,6 +8,7 @@ export function toBarberPersistence(barber: Barber): BarberModelAttributes {
     name: barber.getName(),
     age: barber.getAge().getValue(),
     hiredAt: barber.getHiredAt(),
+    active: barber.isActive(),
     createdAt: barber.getCreatedAt(),
     updatedAt: barber.getUpdatedAt(),
   };
@@ -24,6 +25,7 @@ export function toBarberDomain(
     age: Age.create(model.age),
     hiredAt: model.hiredAt,
     qualificationIds,
+    active: model.active,
     createdAt: model.createdAt,
     updatedAt: model.updatedAt,
   });

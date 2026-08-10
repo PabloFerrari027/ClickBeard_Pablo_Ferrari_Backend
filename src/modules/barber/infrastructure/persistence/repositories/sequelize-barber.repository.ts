@@ -104,6 +104,7 @@ export class SequelizeBarberRepository implements BarberRepository {
     try {
       const transaction = TransactionContext.current();
       const { rows, count } = await this.barberModel.findAndCountAll({
+        where: { active: true },
         order: [['name', 'ASC']],
         limit,
         offset: (page - 1) * limit,

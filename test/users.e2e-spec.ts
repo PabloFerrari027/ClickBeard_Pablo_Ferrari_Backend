@@ -253,15 +253,22 @@ describe('Users (e2e)', () => {
   });
 
   describe('ADMIN lifecycle', () => {
-    it('lets an admin change role, deactivate and reactivate a user', async () => {
+    it('lets an admin promote a user to ADMIN, demote them back to CLIENT, then deactivate and reactivate', async () => {
       const target = await registerUser(app);
 
-      const roleResponse = await request(app.getHttpServer())
+      const promoteResponse = await request(app.getHttpServer())
         .patch(`/users/${target.id}/role`)
         .set(authHeader(admin.accessToken))
-        .send({ role: 'BARBER' });
-      expect(roleResponse.status).toBe(200);
-      expect(roleResponse.body.role).toBe('BARBER');
+        .send({ role: 'ADMIN' });
+      expect(promoteResponse.status).toBe(200);
+      expect(promoteResponse.body.role).toBe('ADMIN');
+
+      const demoteResponse = await request(app.getHttpServer())
+        .patch(`/users/${target.id}/role`)
+        .set(authHeader(admin.accessToken))
+        .send({ role: 'CLIENT' });
+      expect(demoteResponse.status).toBe(200);
+      expect(demoteResponse.body.role).toBe('CLIENT');
 
       const deactivateResponse = await request(app.getHttpServer())
         .patch(`/users/${target.id}/deactivate`)
@@ -274,6 +281,18 @@ describe('Users (e2e)', () => {
         .set(authHeader(admin.accessToken));
       expect(activateResponse.status).toBe(200);
       expect(activateResponse.body.active).toBe(true);
+    });
+
+    it('rejects assigning the BARBER role directly, even as an admin — barbers can only be created via POST /barbers', async () => {
+      const target = await registerUser(app);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/users/${target.id}/role`)
+        .set(authHeader(admin.accessToken))
+        .send({ role: 'BARBER' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('BarberRoleChangeNotAllowedError');
     });
   });
 });

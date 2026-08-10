@@ -14,6 +14,7 @@ function buildProps(overrides: Partial<BarberProps> = {}): BarberProps {
     age: Age.create(30),
     hiredAt: new Date('2025-01-01T00:00:00.000Z'),
     qualificationIds: ['qualification-1'],
+    active: true,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -39,6 +40,7 @@ describe('Barber', () => {
       expect(barber.getName()).toBe('John Barber');
       expect(barber.getQualificationIds()).toEqual(['q1', 'q2']);
       expect(barber.getCreatedAt()).toEqual(barber.getUpdatedAt());
+      expect(barber.isActive()).toBe(true);
     });
 
     it('throws BarberMustHaveAtLeastOneQualificationError when no qualifications are given', () => {
@@ -177,6 +179,40 @@ describe('Barber', () => {
 
       expect(() => barber.removeQualification('q1')).toThrow(
         BarberMustHaveAtLeastOneQualificationError,
+      );
+    });
+  });
+
+  describe('deactivate', () => {
+    it('marks the barber inactive and updates updatedAt', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const barber = Barber.restore(buildProps());
+
+      jest.setSystemTime(new Date('2026-01-02T00:00:00.000Z'));
+      barber.deactivate();
+
+      expect(barber.isActive()).toBe(false);
+      expect(barber.getUpdatedAt()).toEqual(
+        new Date('2026-01-02T00:00:00.000Z'),
+      );
+    });
+  });
+
+  describe('reactivate', () => {
+    it('marks the barber active again, preserving its other data, and updates updatedAt', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const barber = Barber.restore(buildProps({ active: false }));
+
+      jest.setSystemTime(new Date('2026-01-02T00:00:00.000Z'));
+      barber.reactivate();
+
+      expect(barber.isActive()).toBe(true);
+      expect(barber.getAge()).toEqual(buildProps().age);
+      expect(barber.getQualificationIds()).toEqual(
+        buildProps().qualificationIds,
+      );
+      expect(barber.getUpdatedAt()).toEqual(
+        new Date('2026-01-02T00:00:00.000Z'),
       );
     });
   });

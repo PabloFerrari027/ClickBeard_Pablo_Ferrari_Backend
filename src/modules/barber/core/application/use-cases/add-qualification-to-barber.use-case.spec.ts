@@ -40,6 +40,7 @@ describe('AddQualificationToBarberUseCase', () => {
       age: Age.create(30),
       hiredAt: new Date('2025-01-01T00:00:00.000Z'),
       qualificationIds,
+      active: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });

@@ -55,7 +55,10 @@ export class BarbersController {
   @Post()
   @Auth(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Creates a barber profile for an identity user' })
+  @ApiOperation({
+    summary:
+      'Creates a barber profile for an existing CLIENT identity user, identified by email, and promotes them to BARBER as part of the operation. There is no separate promotion step and an admin cannot turn another admin into a barber',
+  })
   @ApiOkResponse({ type: BarberResponseDto })
   async create(
     @Body() body: CreateBarberRequestDto,

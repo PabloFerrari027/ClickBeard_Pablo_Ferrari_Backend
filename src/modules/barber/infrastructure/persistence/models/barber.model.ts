@@ -5,6 +5,7 @@ export interface BarberModelAttributes {
   name: string;
   age: number;
   hiredAt: Date;
+  active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +32,9 @@ export class BarberModel extends Model<
 
   @Column({ type: DataType.DATE, allowNull: false })
   declare hiredAt: Date;
+
+  @Column({ type: DataType.BOOLEAN, allowNull: false })
+  declare active: boolean;
 
   @Column({ type: DataType.DATE, allowNull: false })
   declare createdAt: Date;

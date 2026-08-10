@@ -6,9 +6,9 @@ import { Password } from '../../../../identity/core/domain/value-objects/passwor
 import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { Qualification } from '../../../../qualification/core/domain/entities/qualification.entity';
 import { QualificationNotFoundError } from '../../../../qualification/core/domain/errors/qualification-not-found.error';
+import { AdminCannotBecomeBarberError } from '../../domain/errors/admin-cannot-become-barber.error';
 import { BarberAlreadyExistsError } from '../../domain/errors/barber-already-exists.error';
 import { UserIsNotAdminError } from '../../domain/errors/user-is-not-admin.error';
-import { UserIsNotBarberError } from '../../domain/errors/user-is-not-barber.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { Barber } from '../../domain/entities/barber.entity';
 import { Age } from '../../domain/value-objects/age.value-object';
@@ -23,7 +23,7 @@ function buildUser(overrides: { id?: string; role?: UserRole } = {}): User {
     name: 'John Barber',
     email: Email.create(`${id}@example.com`),
     password: Password.fromHash('hashed-password'),
-    role: overrides.role ?? UserRole.BARBER,
+    role: overrides.role ?? UserRole.CLIENT,
     active: true,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -64,11 +64,12 @@ describe('CreateBarberUseCase', () => {
     );
   });
 
-  it('creates a barber and returns its dto', async () => {
+  it('creates a barber and promotes the CLIENT user to BARBER', async () => {
     userRepository.findById.mockResolvedValue(
       buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
     );
-    userRepository.findByEmail.mockResolvedValue(buildUser());
+    const targetUser = buildUser({ role: UserRole.CLIENT });
+    userRepository.findByEmail.mockResolvedValue(targetUser);
     barberRepository.findById.mockResolvedValue(null);
     qualificationRepository.findById.mockResolvedValue(
       Qualification.create({ name: 'Beard Trim' }),
@@ -82,10 +83,36 @@ describe('CreateBarberUseCase', () => {
       qualificationIds: ['qualification-id', 'qualification-id'],
     });
 
+    expect(targetUser.getRole()).toBe(UserRole.BARBER);
+    expect(userRepository.save).toHaveBeenCalledWith(targetUser);
     expect(barberRepository.save).toHaveBeenCalledTimes(1);
     expect(result.barber.userId).toBe('user-id');
     expect(result.barber.age).toBe(30);
     expect(result.barber.qualifications).toHaveLength(1);
+  });
+
+  it('does not change the role again when the user is already BARBER (retry after a partial failure)', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
+    );
+    userRepository.findByEmail.mockResolvedValue(
+      buildUser({ role: UserRole.BARBER }),
+    );
+    barberRepository.findById.mockResolvedValue(null);
+    qualificationRepository.findById.mockResolvedValue(
+      Qualification.create({ name: 'Beard Trim' }),
+    );
+
+    await useCase.execute({
+      requesterId: 'admin-id',
+      email: 'user-id@example.com',
+      age: 30,
+      hiredAt: new Date('2025-01-01T00:00:00.000Z'),
+      qualificationIds: ['qualification-id'],
+    });
+
+    expect(userRepository.save).not.toHaveBeenCalled();
+    expect(barberRepository.save).toHaveBeenCalledTimes(1);
   });
 
   it('throws UserIsNotAdminError when the requester is not an admin', async () => {
@@ -122,12 +149,12 @@ describe('CreateBarberUseCase', () => {
     ).rejects.toThrow(UserNotFoundError);
   });
 
-  it('throws UserIsNotBarberError when the target user does not have the BARBER role', async () => {
+  it('throws AdminCannotBecomeBarberError when the target user is an admin', async () => {
     userRepository.findById.mockResolvedValue(
       buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
     );
     userRepository.findByEmail.mockResolvedValue(
-      buildUser({ role: UserRole.CLIENT }),
+      buildUser({ role: UserRole.ADMIN }),
     );
 
     await expect(
@@ -138,7 +165,9 @@ describe('CreateBarberUseCase', () => {
         hiredAt: new Date('2025-01-01T00:00:00.000Z'),
         qualificationIds: ['qualification-id'],
       }),
-    ).rejects.toThrow(UserIsNotBarberError);
+    ).rejects.toThrow(AdminCannotBecomeBarberError);
+    expect(userRepository.save).not.toHaveBeenCalled();
+    expect(barberRepository.save).not.toHaveBeenCalled();
   });
 
   it('throws BarberAlreadyExistsError when a barber profile already exists for the user', async () => {
@@ -165,6 +194,44 @@ describe('CreateBarberUseCase', () => {
         qualificationIds: ['qualification-id'],
       }),
     ).rejects.toThrow(BarberAlreadyExistsError);
+  });
+
+  it('reactivates an existing-but-inactive barber, preserving its original data', async () => {
+    userRepository.findById.mockResolvedValue(
+      buildUser({ id: 'admin-id', role: UserRole.ADMIN }),
+    );
+    userRepository.findByEmail.mockResolvedValue(
+      buildUser({ role: UserRole.CLIENT }),
+    );
+    const existingBarber = Barber.create({
+      userId: 'user-id',
+      name: 'John Barber',
+      age: Age.create(45),
+      hiredAt: new Date('2020-01-01T00:00:00.000Z'),
+      qualificationIds: ['old-qualification-id'],
+    });
+    existingBarber.deactivate();
+    barberRepository.findById.mockResolvedValue(existingBarber);
+    qualificationRepository.listByBarberId.mockResolvedValue([
+      Qualification.create({ name: 'Old Qualification' }),
+    ]);
+
+    const result = await useCase.execute({
+      requesterId: 'admin-id',
+      email: 'user-id@example.com',
+      age: 30,
+      hiredAt: new Date('2025-01-01T00:00:00.000Z'),
+      qualificationIds: ['new-qualification-id'],
+    });
+
+    expect(existingBarber.isActive()).toBe(true);
+    expect(existingBarber.getAge().getValue()).toBe(45);
+    expect(existingBarber.getQualificationIds()).toEqual([
+      'old-qualification-id',
+    ]);
+    expect(barberRepository.save).toHaveBeenCalledWith(existingBarber);
+    expect(qualificationRepository.findById).not.toHaveBeenCalled();
+    expect(result.barber.age).toBe(45);
   });
 
   it('throws QualificationNotFoundError when a qualification does not exist', async () => {

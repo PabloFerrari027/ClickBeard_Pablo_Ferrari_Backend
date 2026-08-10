@@ -56,7 +56,7 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:
-      'Registers a new user. Always created as CLIENT — promoting to BARBER/ADMIN requires an existing admin via PATCH /users/:id/role',
+      'Registers a new user. Always created as CLIENT — promoting to ADMIN requires an existing admin via PATCH /users/:id/role; becoming a BARBER requires an admin to create a barber profile via POST /barbers',
   })
   @ApiOkResponse({ type: UserResponseDto })
   async register(
@@ -133,7 +133,10 @@ export class UsersController {
 
   @Patch(':id/role')
   @Auth(UserRole.ADMIN)
-  @ApiOperation({ summary: "Changes a user's role" })
+  @ApiOperation({
+    summary:
+      "Changes a user's role between CLIENT and ADMIN. Cannot be used to assign BARBER — create a barber profile via POST /barbers instead",
+  })
   @ApiOkResponse({ type: UserResponseDto })
   async changeRole(
     @Param('id') id: string,

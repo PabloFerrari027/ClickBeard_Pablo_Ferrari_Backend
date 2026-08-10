@@ -14,6 +14,7 @@ export const DOMAIN_EVENTS_CHANNELS = {
   NOTIFICATIONS: 'domain-events.notifications',
   ACCOUNT_VERIFICATION: 'domain-events.account-verification',
   SCHEDULING: 'domain-events.scheduling',
+  BARBER: 'domain-events.barber',
 } as const;
 
 export type DomainEventsChannel =

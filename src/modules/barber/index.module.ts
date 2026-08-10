@@ -8,12 +8,14 @@ import { BARBER_REPOSITORY } from './core/application/ports/barber-repository.po
 import { AddQualificationToBarberUseCase } from './core/application/use-cases/add-qualification-to-barber.use-case';
 import { CreateBarberUnavailabilityUseCase } from './core/application/use-cases/create-barber-unavailability.use-case';
 import { CreateBarberUseCase } from './core/application/use-cases/create-barber.use-case';
+import { DeactivateBarberUseCase } from './core/application/use-cases/deactivate-barber.use-case';
 import { DeleteBarberUnavailabilityUseCase } from './core/application/use-cases/delete-barber-unavailability.use-case';
 import { GetBarberUseCase } from './core/application/use-cases/get-barber.use-case';
 import { ListBarberUnavailabilitiesUseCase } from './core/application/use-cases/list-barber-unavailabilities.use-case';
 import { ListBarbersUseCase } from './core/application/use-cases/list-barbers.use-case';
 import { RemoveQualificationFromBarberUseCase } from './core/application/use-cases/remove-qualification-from-barber.use-case';
 import { UpdateBarberUseCase } from './core/application/use-cases/update-barber.use-case';
+import { UserRoleChangedConsumer } from './infrastructure/messaging/user-role-changed.consumer';
 import { BarberUnavailabilityModel } from './infrastructure/persistence/models/barber-unavailability.model';
 import { BarberQualificationModel } from './infrastructure/persistence/models/barber-qualification.model';
 import { BarberModel } from './infrastructure/persistence/models/barber.model';
@@ -287,6 +289,23 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         CACHE_INVALIDATION_SERVICE,
       ],
     },
+    {
+      provide: DeactivateBarberUseCase,
+      useFactory: (
+        barberRepository: BarberRepository,
+        cacheInvalidationService: CacheInvalidationService,
+      ) =>
+        new CacheInvalidatingUseCase(
+          new DeactivateBarberUseCase(barberRepository),
+          cacheInvalidationService,
+          {
+            buildKeys: (input) => [CacheKeyGenerator.barber(input.barberId)],
+            buildPrefixes: () => [CacheKeyGenerator.barbersListPrefix()],
+          },
+        ),
+      inject: [BARBER_REPOSITORY, CACHE_INVALIDATION_SERVICE],
+    },
+    UserRoleChangedConsumer,
   ],
   exports: [BARBER_REPOSITORY],
 })

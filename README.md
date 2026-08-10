@@ -836,7 +836,8 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | Senha forte | Mínimo 8 caracteres, pelo menos 1 letra e 1 número (`PlainPassword.create`) |
 | Papéis | `CLIENT`, `BARBER`, `ADMIN` |
 | **Todo cadastro nasce `CLIENT`** | `RegisterUserUseCase` não aceita `role` — não existe caso de uso dedicado para criar `BARBER` ou `ADMIN` diretamente |
-| **`BARBER`/`ADMIN` só existem por promoção de um `ADMIN`** | `ChangeUserRoleUseCase` (`PATCH /users/:id/role`) é o único caminho para trocar o papel de um usuário, e a rota é `@Auth(UserRole.ADMIN)`. Sem isso, não existiria forma de criar o primeiro admin — daí o seeder |
+| **`ADMIN` só existe por promoção de um `ADMIN` existente** | `ChangeUserRoleUseCase` (`PATCH /users/:id/role`, `@Auth(UserRole.ADMIN)`) troca o papel de um usuário entre `CLIENT` e `ADMIN`. Sem isso, não existiria forma de criar o primeiro admin — daí o seeder |
+| **`BARBER` não pode ser atribuído via `PATCH /users/:id/role`** | `ChangeUserRoleUseCase` rejeita `role=BARBER` com `BarberRoleChangeNotAllowedError` (400) — não existe (nem existiu antes) promoção de usuário a barbeiro por essa rota. O único caminho para um usuário virar `BARBER` é um `ADMIN` criar o perfil de barbeiro via `POST /barbers` (seção 11.4), que promove o usuário como parte da própria criação. A rota ainda permite regredir um `BARBER` de volta a `CLIENT` |
 | Data de nascimento é opcional | `birthDate` em `RegisterUserRequestDto`/`UpdateUserProfileRequestDto`, validado por `BirthDate` (não pode ser uma data futura) quando informado |
 | Usuário edita seu próprio nome/data de nascimento | `PATCH /users/:id/profile`, self-only (nem admin pode agir por outro usuário aqui) — separado da troca de senha (`PATCH /users/:id/password`, self-or-admin) |
 | Um `ADMIN` nunca pode ser desativado, por ninguém | `User.deactivate()` rejeita incondicionalmente quando `role === ADMIN` (`AdminCannotBeDeactivatedError`), antes mesmo de checar se já está inativo |
@@ -868,8 +869,8 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | Regra | Detalhe |
 |---|---|
 | Idade entre 18 e 100 anos | `Age.create()` |
-| Só um `User` com `role=BARBER` pode virar barbeiro | `UserIsNotBarberError` senão |
-| Um barbeiro precisa de ao menos 1 qualificação | Na criação e ao tentar remover a última (`BarberMustHaveAtLeastOneQualificationError`) |
+| **Criar um barbeiro promove o usuário a `BARBER` automaticamente — não há promoção separada** | `CreateBarberUseCase` (`POST /barbers`, `@Auth(UserRole.ADMIN)`) busca o `User` pelo `email` informado; se o papel atual não for `BARBER`, chama `user.changeRole(BARBER)` e persiste **antes** de gravar o perfil de barbeiro — o que também torna uma nova tentativa após falha idempotente (se já estiver `BARBER`, o passo é pulado). Um `User` com `role=ADMIN` não pode virar barbeiro (`AdminCannotBecomeBarberError`) |
+| Um barbeiro precisa de ao menos 1 qualificação | Na criação (`qualificationIds` não pode ser vazio) e ao tentar remover a última (`BarberMustHaveAtLeastOneQualificationError`) |
 | Data de contratação não pode ser futura | `InvalidHiringDateError` |
 | Qualificação não pode ser adicionada duas vezes | `QualificationAlreadyAssignedError` |
 | Período de indisponibilidade precisa ter fim depois do início | `InvalidUnavailabilityPeriodError` |
@@ -962,10 +963,10 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | Arquivo | Cobre |
 |---|---|
 | `health.e2e-spec.ts` | `GET /health`, `GET /docs` |
-| `users.e2e-spec.ts` | Cadastro, autenticação direta, perfil (`self`/admin), listagem (admin-only), troca de senha, papel, ativar/desativar |
+| `users.e2e-spec.ts` | Cadastro, autenticação direta, perfil (`self`/admin), listagem (admin-only), troca de senha, papel (promoção a `ADMIN`, regressão a `CLIENT`, rejeição de `role=BARBER` com `BarberRoleChangeNotAllowedError`), ativar/desativar |
 | `auth.e2e-spec.ts` | Login (sem sessão), fluxo completo até token, refresh (rotação), logout (revogação) |
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
-| `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
+| `barbers.e2e-spec.ts` | CRUD de barbeiro (criação promove o `User` a `BARBER` automaticamente, sem promoção prévia; rejeição de segundo perfil para o mesmo `BARBER` e de criação para um `ADMIN`), gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
 | `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, sem aviso mínimo — só não pode ser no passado), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, filtro de período (`startAt`/`endAt`) em `/future` incluindo e excluindo um agendamento e rejeição com 400 quando `startAt` vem depois de `endAt`, `BARBER` reservando com outro `BARBER` (e rejeição ao tentar reservar consigo mesmo), `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403) |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |

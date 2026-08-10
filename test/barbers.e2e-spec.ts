@@ -35,10 +35,64 @@ describe('Barbers (e2e)', () => {
     await app.close();
   });
 
-  async function createBarberUser() {
+  /**
+   * Registers a fresh CLIENT user and creates their barber profile in one
+   * call — POST /barbers is what promotes the user to BARBER now, there is
+   * no separate promotion step to run first.
+   */
+  async function createBarberUser(
+    overrides: { age?: number; hiredAt?: string } = {},
+  ) {
     const user = await registerUser(app);
-    await promoteUser(app, admin, user.id, UserRole.BARBER);
-    return { ...user, role: UserRole.BARBER };
+    const response = await request(app.getHttpServer())
+      .post('/barbers')
+      .set(authHeader(admin.accessToken))
+      .send({
+        email: user.email,
+        age: overrides.age ?? 30,
+        hiredAt: overrides.hiredAt ?? '2025-01-01T00:00:00.000Z',
+        qualificationIds: [qualificationId],
+      })
+      .expect(201);
+
+    return {
+      ...user,
+      role: UserRole.BARBER,
+      barberId: response.body.id as string,
+    };
+  }
+
+  /**
+   * Deactivating a barber profile on demotion runs off the async
+   * `UserRoleChanged` event (see `UserRoleChangedConsumer`), not the
+   * `PATCH /users/:id/role` request itself, so assertions that depend on
+   * it must poll instead of checking immediately — same reason
+   * `NotificationSenderSpy.waitFor` polls elsewhere in the e2e suite.
+   */
+  async function waitForBarberStatus(
+    barberId: string,
+    expectedStatus: number,
+    { timeoutMs = 10_000, intervalMs = 100 } = {},
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+      const response = await request(app.getHttpServer())
+        .get(`/barbers/${barberId}`)
+        .set(authHeader(admin.accessToken));
+
+      if (response.status === expectedStatus) {
+        return;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Timed out after ${timeoutMs}ms waiting for GET /barbers/${barberId} to return ${expectedStatus}; last status was ${response.status}`,
+        );
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
   }
 
   describe('POST /barbers', () => {
@@ -52,13 +106,13 @@ describe('Barbers (e2e)', () => {
 
     it('rejects a non-admin with 403', async () => {
       const { session } = await registerAndLogin(app, notifications);
-      const barberUser = await createBarberUser();
+      const clientUser = await registerUser(app);
 
       const response = await request(app.getHttpServer())
         .post('/barbers')
         .set(authHeader(session.accessToken))
         .send({
-          email: barberUser.email,
+          email: clientUser.email,
           age: 30,
           hiredAt: '2025-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
@@ -67,25 +121,7 @@ describe('Barbers (e2e)', () => {
       expect(response.status).toBe(403);
     });
 
-    it('creates a barber profile for a BARBER-role user as admin', async () => {
-      const barberUser = await createBarberUser();
-
-      const response = await request(app.getHttpServer())
-        .post('/barbers')
-        .set(authHeader(admin.accessToken))
-        .send({
-          email: barberUser.email,
-          age: 30,
-          hiredAt: '2025-01-01T00:00:00.000Z',
-          qualificationIds: [qualificationId],
-        });
-
-      expect(response.status).toBe(201);
-      expect(response.body.id).toBe(barberUser.id);
-      expect(response.body.userId).toBe(barberUser.id);
-    });
-
-    it('rejects creating a barber profile for a non-BARBER user', async () => {
+    it('creates a barber profile for a CLIENT user as admin, promoting them to BARBER', async () => {
       const clientUser = await registerUser(app);
 
       const response = await request(app.getHttpServer())
@@ -98,8 +134,49 @@ describe('Barbers (e2e)', () => {
           qualificationIds: [qualificationId],
         });
 
+      expect(response.status).toBe(201);
+      expect(response.body.id).toBe(clientUser.id);
+      expect(response.body.userId).toBe(clientUser.id);
+
+      const profile = await request(app.getHttpServer())
+        .get(`/users/${clientUser.id}`)
+        .set(authHeader(admin.accessToken));
+      expect(profile.body.role).toBe(UserRole.BARBER);
+    });
+
+    it('rejects creating a second barber profile for an already-BARBER user', async () => {
+      const barberUser = await createBarberUser();
+
+      const response = await request(app.getHttpServer())
+        .post('/barbers')
+        .set(authHeader(admin.accessToken))
+        .send({
+          email: barberUser.email,
+          age: 30,
+          hiredAt: '2025-01-01T00:00:00.000Z',
+          qualificationIds: [qualificationId],
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe('BarberAlreadyExistsError');
+    });
+
+    it('rejects creating a barber profile for an ADMIN user', async () => {
+      const promotedAdmin = await registerUser(app);
+      await promoteUser(app, admin, promotedAdmin.id, UserRole.ADMIN);
+
+      const response = await request(app.getHttpServer())
+        .post('/barbers')
+        .set(authHeader(admin.accessToken))
+        .send({
+          email: promotedAdmin.email,
+          age: 30,
+          hiredAt: '2025-01-01T00:00:00.000Z',
+          qualificationIds: [qualificationId],
+        });
+
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe('UserIsNotBarberError');
+      expect(response.body.error).toBe('AdminCannotBecomeBarberError');
     });
   });
 
@@ -111,17 +188,7 @@ describe('Barbers (e2e)', () => {
     });
 
     it('lists barbers for any authenticated user', async () => {
-      const barberUser = await createBarberUser();
-      await request(app.getHttpServer())
-        .post('/barbers')
-        .set(authHeader(admin.accessToken))
-        .send({
-          email: barberUser.email,
-          age: 25,
-          hiredAt: '2025-01-01T00:00:00.000Z',
-          qualificationIds: [qualificationId],
-        })
-        .expect(201);
+      await createBarberUser({ age: 25 });
 
       const { session } = await registerAndLogin(app, notifications);
 
@@ -134,17 +201,7 @@ describe('Barbers (e2e)', () => {
     });
 
     it('gets a single barber by id', async () => {
-      const barberUser = await createBarberUser();
-      await request(app.getHttpServer())
-        .post('/barbers')
-        .set(authHeader(admin.accessToken))
-        .send({
-          email: barberUser.email,
-          age: 40,
-          hiredAt: '2025-01-01T00:00:00.000Z',
-          qualificationIds: [qualificationId],
-        })
-        .expect(201);
+      const barberUser = await createBarberUser({ age: 40 });
 
       const response = await request(app.getHttpServer())
         .get(`/barbers/${barberUser.id}`)
@@ -155,19 +212,56 @@ describe('Barbers (e2e)', () => {
     });
   });
 
-  describe('PATCH /barbers/:id', () => {
-    it('updates a barber as admin', async () => {
-      const barberUser = await createBarberUser();
-      await request(app.getHttpServer())
+  describe('Deactivation on demotion and reactivation on re-promotion', () => {
+    it('deactivates the barber profile when demoted to CLIENT and reactivates it, preserving the original data, when promoted back to BARBER', async () => {
+      const barberUser = await createBarberUser({ age: 33 });
+
+      await promoteUser(app, admin, barberUser.id, UserRole.CLIENT);
+      await waitForBarberStatus(barberUser.id, 404);
+
+      const listAfterDemotion = await request(app.getHttpServer())
+        .get('/barbers')
+        .set(authHeader(admin.accessToken));
+      expect(
+        (listAfterDemotion.body.barbers as Array<{ id: string }>).some(
+          (barber) => barber.id === barberUser.id,
+        ),
+      ).toBe(false);
+
+      const reactivateResponse = await request(app.getHttpServer())
         .post('/barbers')
         .set(authHeader(admin.accessToken))
         .send({
           email: barberUser.email,
-          age: 22,
-          hiredAt: '2025-01-01T00:00:00.000Z',
+          age: 99,
+          hiredAt: '2020-01-01T00:00:00.000Z',
           qualificationIds: [qualificationId],
-        })
-        .expect(201);
+        });
+      expect(reactivateResponse.status).toBe(201);
+      // Reactivation preserves the pre-demotion profile data rather than
+      // applying this request's body.
+      expect(reactivateResponse.body.age).toBe(33);
+
+      const getAfterReactivation = await request(app.getHttpServer())
+        .get(`/barbers/${barberUser.id}`)
+        .set(authHeader(admin.accessToken));
+      expect(getAfterReactivation.status).toBe(200);
+      expect(getAfterReactivation.body.age).toBe(33);
+
+      const listAfterReactivation = await request(app.getHttpServer())
+        .get('/barbers')
+        .set(authHeader(admin.accessToken));
+      expect(
+        (listAfterReactivation.body.barbers as Array<{ id: string }>).some(
+          (barber) => barber.id === barberUser.id,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe('PATCH /barbers/:id', () => {
+    it('updates a barber as admin', async () => {
+      const barberUser = await createBarberUser({ age: 22 });
 
       const response = await request(app.getHttpServer())
         .patch(`/barbers/${barberUser.id}`)
@@ -181,17 +275,7 @@ describe('Barbers (e2e)', () => {
 
   describe('Barber qualifications', () => {
     it('adds and removes a qualification as admin', async () => {
-      const barberUser = await createBarberUser();
-      await request(app.getHttpServer())
-        .post('/barbers')
-        .set(authHeader(admin.accessToken))
-        .send({
-          email: barberUser.email,
-          age: 28,
-          hiredAt: '2025-01-01T00:00:00.000Z',
-          qualificationIds: [qualificationId],
-        })
-        .expect(201);
+      const barberUser = await createBarberUser({ age: 28 });
 
       const secondQualification = await request(app.getHttpServer())
         .post('/qualifications')
@@ -231,18 +315,7 @@ describe('Barbers (e2e)', () => {
 
     async function createUnavailabilityTestBarber(): Promise<string> {
       const barberUser = await createBarberUser();
-      const response = await request(app.getHttpServer())
-        .post('/barbers')
-        .set(authHeader(admin.accessToken))
-        .send({
-          email: barberUser.email,
-          age: 30,
-          hiredAt: '2025-01-01T00:00:00.000Z',
-          qualificationIds: [qualificationId],
-        })
-        .expect(201);
-
-      return response.body.id as string;
+      return barberUser.id;
     }
 
     it('rejects an unauthenticated create request with 401', async () => {

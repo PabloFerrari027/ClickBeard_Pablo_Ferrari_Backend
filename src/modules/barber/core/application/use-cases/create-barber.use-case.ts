@@ -3,8 +3,8 @@ import { UserRole } from '../../../../identity/core/domain/enums/user-role.enum'
 import { QualificationRepository } from '../../../../qualification/core/application/ports/qualification-repository.port';
 import { Qualification } from '../../../../qualification/core/domain/entities/qualification.entity';
 import { QualificationNotFoundError } from '../../../../qualification/core/domain/errors/qualification-not-found.error';
+import { AdminCannotBecomeBarberError } from '../../domain/errors/admin-cannot-become-barber.error';
 import { BarberAlreadyExistsError } from '../../domain/errors/barber-already-exists.error';
-import { UserIsNotBarberError } from '../../domain/errors/user-is-not-barber.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { Barber } from '../../domain/entities/barber.entity';
 import { Age } from '../../domain/value-objects/age.value-object';
@@ -36,14 +36,38 @@ export class CreateBarberUseCase implements UseCase<
       throw new UserNotFoundError();
     }
 
-    if (user.getRole() !== UserRole.BARBER) {
-      throw new UserIsNotBarberError();
+    if (user.getRole() === UserRole.ADMIN) {
+      throw new AdminCannotBecomeBarberError();
     }
 
     const existingBarber = await this.barberRepository.findById(user.getId());
 
-    if (existingBarber) {
+    if (existingBarber?.isActive()) {
       throw new BarberAlreadyExistsError();
+    }
+
+    // Barber creation is what grants the BARBER role — there is no
+    // separate promotion step. Saving the role change before the barber
+    // row also makes a failed/retried create idempotent: a retry finds
+    // the user already BARBER and skips straight to creating the profile.
+    if (user.getRole() !== UserRole.BARBER) {
+      user.changeRole(UserRole.BARBER);
+      await this.userRepository.save(user);
+    }
+
+    // A previously-demoted barber is reactivated as-is, keeping their
+    // original age/hiredAt/qualifications rather than the new request's
+    // — an admin can still adjust those afterward via the update/
+    // qualification endpoints.
+    if (existingBarber) {
+      existingBarber.reactivate();
+      await this.barberRepository.save(existingBarber);
+
+      const qualifications = await this.qualificationRepository.listByBarberId(
+        existingBarber.getId(),
+      );
+
+      return { barber: toBarberDto(existingBarber, qualifications) };
     }
 
     const qualificationIds = Array.from(new Set(input.qualificationIds));

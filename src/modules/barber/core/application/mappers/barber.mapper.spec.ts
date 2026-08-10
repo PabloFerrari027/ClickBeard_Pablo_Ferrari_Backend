@@ -13,6 +13,7 @@ describe('toBarberDto', () => {
       age: Age.create(30),
       hiredAt,
       qualificationIds: ['qualification-id'],
+      active: true,
       createdAt: now,
       updatedAt: now,
     });
