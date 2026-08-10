@@ -1,0 +1,64 @@
+name: Deploy ClickBeard
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "========================================="
+            echo "Starting ClickBeard deployment"
+            echo "========================================="
+
+            cd /home/ec2-user/apps/clickbeard
+
+            echo "Updating repository..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Building Docker images..."
+            docker compose -f docker-compose.prod.yml build
+
+            echo "Starting database and Redis..."
+            docker compose -f docker-compose.prod.yml up -d postgres redis
+
+            echo "Waiting for services..."
+            sleep 10
+
+            echo "Running migrations..."
+            docker compose -f docker-compose.prod.yml run --rm database-migration \
+              npx sequelize-cli db:migrate
+
+            echo "Running database seed..."
+            docker compose -f docker-compose.prod.yml run --rm database-migration \
+              npx sequelize-cli db:seed:all
+
+            echo "Starting application..."
+            docker compose -f docker-compose.prod.yml up -d app
+
+            echo "Cleaning unused Docker resources..."
+            docker image prune -f
+
+            echo "Checking containers..."
+            docker compose -f docker-compose.prod.yml ps
+
+            echo "Checking API health..."
+            curl --fail --max-time 20 http://127.0.0.1:3000/health
+
+            echo "========================================="
+            echo "Deployment completed successfully"
+            echo "========================================="
