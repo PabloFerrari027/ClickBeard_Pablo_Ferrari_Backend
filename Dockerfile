@@ -22,21 +22,20 @@ EXPOSE 3000
 
 CMD ["npm", "run", "dev"]
 
-
 # ============================================================
 # BUILD
 # ============================================================
 
 FROM base AS build
 
-ENV NODE_ENV=production
+# NÃO definir NODE_ENV=production aqui.
+# O build precisa das devDependencies, incluindo o Nest CLI.
 
 RUN npm ci
 
 COPY . .
 
 RUN npm run build
-
 
 # ============================================================
 # PRODUCTION
@@ -56,14 +55,13 @@ RUN npm ci --omit=dev
 # Copia somente o código compilado
 COPY --from=build /app/dist ./dist
 
-# Copia arquivos necessários para Sequelize CLI/migrations
+# Arquivos necessários para Sequelize CLI/migrations
 COPY --from=build /app/database ./database
 COPY --from=build /app/.sequelizerc ./
 
 EXPOSE 3000
 
 CMD ["node", "dist/main.js"]
-
 
 # ============================================================
 # DATABASE MIGRATION
@@ -80,6 +78,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY database ./database
+
 COPY .sequelizerc ./
 
 CMD ["npx", "sequelize-cli", "db:migrate"]
