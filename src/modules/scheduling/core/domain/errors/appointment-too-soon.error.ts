@@ -2,6 +2,6 @@ import { ValidationError } from '../../../../../shared/domain/errors/validation.
 
 export class AppointmentTooSoonError extends ValidationError {
   constructor() {
-    super('Appointments must be booked at least 2 hours in advance.');
+    super('Appointments must be booked for a time in the future.');
   }
 }

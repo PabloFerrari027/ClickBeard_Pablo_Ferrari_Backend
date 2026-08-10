@@ -35,7 +35,7 @@ ClickBeard é uma API REST para gestão de uma barbearia: cadastro de clientes/b
 - Autenticação com **verificação em duas etapas**: login confirma a senha mas só emite tokens depois que o usuário valida um código de 6+ dígitos enviado por e-mail.
 - Sessões via **JWT de acesso + refresh token rotativo**, com revogação e lista de tokens no banco.
 - Cadastro de **qualificações** (serviços) e de **barbeiros**, com N:N entre eles.
-- **Agendamento de horários** com grade de 30 minutos, horário comercial fixo, aviso mínimo de 2h para reservar/cancelar, e prevenção de double-booking via índice único parcial no banco. Quando o próprio cliente cancela, ele é notificado por e-mail confirmando o cancelamento.
+- **Agendamento de horários** com grade de 30 minutos, horário comercial fixo, aviso mínimo de 2h para cancelar (reservar não exige antecedência mínima), e prevenção de double-booking via índice único parcial no banco. Quando o próprio cliente cancela, ele é notificado por e-mail confirmando o cancelamento.
 - **Cancelamento administrativo de agendamentos**: um `ADMIN` pode cancelar qualquer agendamento informando um motivo obrigatório, sem a janela mínima de 2h que se aplica ao cliente; o cliente é notificado por e-mail com o motivo.
 - **Indisponibilidade de barbeiros** (faltas/doenças): um `ADMIN` registra um período de indisponibilidade por barbeiro, o que bloqueia novas reservas nesse período e **cancela em cascata** (com notificação por e-mail) qualquer agendamento já existente que caia dentro dele.
 - **Analytics administrativo**: métricas de usuários, agendamentos, barbeiros, clientes e ocupação, filtráveis por período.
@@ -892,7 +892,8 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 |---|---|
 | Horário comercial fixo | 08:00–18:00 (`OPENING_HOUR`/`CLOSING_HOUR`) |
 | Slots de 30 minutos, alinhados à grade | `APPOINTMENT_DURATION_MINUTES = 30`; um horário fora da grade ou fora do expediente é `InvalidTimeSlotError` |
-| **Aviso mínimo de 2 horas**, simétrico | `MIN_APPOINTMENT_NOTICE_MS = 2h` — se aplica tanto para **reservar** (`AppointmentTooSoonError`) quanto para **cancelar** (`CancellationWindowExpiredError`) um horário |
+| Reservar não exige antecedência mínima | Só não é possível reservar um horário que já começou (`AppointmentTooSoonError`) |
+| **Cancelar exige aviso mínimo de 2 horas** | `MIN_APPOINTMENT_NOTICE_MS = 2h` — só se aplica a **cancelar** (`CancellationWindowExpiredError`); reservar não tem essa exigência |
 | Sem double-booking | Checado na Application (`AvailabilityService.isBarberAvailable`, dentro de uma transação) **e** garantido no banco pelo índice único parcial (seção 8.3) — dupla camada de proteção |
 | Barbeiro precisa ter a qualificação pedida | `BarberDoesNotHaveQualificationError` |
 | **Um `BARBER` pode reservar um horário com outro `BARBER`, mas não com ele mesmo** | `POST /appointments` é `@Auth()` sem restrição de papel — `customerId` é sempre o requester autenticado, e `CreateAppointmentUseCase` exige que ele exista e esteja ativo (`UserNotFoundError` senão), sem checar `role`. Antes de resolver o perfil do barbeiro, o use case rejeita `customerId === barberId` com `BarberCannotBookOwnAppointmentError` (400) — um usuário com `role=BARBER` age como cliente normalmente ao reservar com qualquer *outro* barbeiro |
@@ -966,7 +967,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro, gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
-| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, respeitando o aviso mínimo de 2h), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, filtro de período (`startAt`/`endAt`) em `/future` incluindo e excluindo um agendamento e rejeição com 400 quando `startAt` vem depois de `endAt`, `BARBER` reservando com outro `BARBER` (e rejeição ao tentar reservar consigo mesmo), `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403) |
+| `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, sem aviso mínimo — só não pode ser no passado), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, filtro de período (`startAt`/`endAt`) em `/future` incluindo e excluindo um agendamento e rejeição com 400 quando `startAt` vem depois de `endAt`, `BARBER` reservando com outro `BARBER` (e rejeição ao tentar reservar consigo mesmo), `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403) |
 | `analytics.e2e-spec.ts` | Todas as 6 rotas — 401 sem token, 403 sem ser admin, 200 com preset válido, 400 com preset inválido |
 
 **42 rotas HTTP** são exercidas pela suíte — todo endpoint listado no Swagger tem pelo menos um teste e2e que efetivamente o invoca.

@@ -203,16 +203,14 @@ describe('CreateAppointmentUseCase', () => {
     );
   });
 
-  it('throws AppointmentTooSoonError when less than 2 hours of notice remain', async () => {
+  it('allows creation with less than 2 hours of notice', async () => {
     jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0, 0));
 
-    await expect(useCase.execute(validInput)).rejects.toThrow(
-      AppointmentTooSoonError,
-    );
+    await expect(useCase.execute(validInput)).resolves.toBeDefined();
   });
 
-  it('allows creation when exactly 2 hours of notice remain', async () => {
-    jest.setSystemTime(new Date(2026, 0, 10, 8, 0, 0, 0));
+  it('allows creation the instant the slot starts', async () => {
+    jest.setSystemTime(new Date(2026, 0, 10, 10, 0, 0, 0));
 
     await expect(useCase.execute(validInput)).resolves.toBeDefined();
   });
