@@ -68,7 +68,10 @@ describe('RegisterUserUseCase', () => {
     const publishedEvent = eventBus.publish.mock.calls[0][0];
     expect(publishedEvent.name).toBe('UserRegistered');
     expect(publishedEvent.recipientEmail).toBe('jane@example.com');
-    expect(publishedEvent.payload).toEqual({ name: 'Jane Doe' });
+    expect(publishedEvent.payload).toEqual({
+      userId: savedUser.getId(),
+      name: 'Jane Doe',
+    });
   });
 
   it('registers a new user with an optional birth date', async () => {

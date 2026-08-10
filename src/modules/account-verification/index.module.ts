@@ -12,7 +12,7 @@ import { VERIFICATION_CODE_GENERATOR } from './core/application/ports/verificati
 import { VERIFICATION_CODE_REPOSITORY } from './core/application/ports/verification-code-repository.port';
 import { VerificationCodeModel } from './infrastructure/persistence/models/verification-code.model';
 import { SequelizeVerificationCodeRepository } from './infrastructure/persistence/repositories/sequelize-verification-code.repository';
-import { UserLoggedInConsumer } from './infrastructure/messaging/user-logged-in.consumer';
+import { VerificationCodeRequestConsumer } from './infrastructure/messaging/verification-code-request.consumer';
 import { ExpiredCodesSweepScheduler } from './infrastructure/scheduling/expired-codes-sweep.scheduler';
 import { AuthSessionManager } from './infrastructure/security/auth-session-manager';
 import { RandomVerificationCodeGenerator } from './infrastructure/security/random-verification-code-generator';
@@ -108,7 +108,7 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         ),
       inject: [VERIFICATION_CODE_REPOSITORY, SESSION_MANAGER],
     },
-    UserLoggedInConsumer,
+    VerificationCodeRequestConsumer,
     ExpiredCodesSweepScheduler,
   ],
 })

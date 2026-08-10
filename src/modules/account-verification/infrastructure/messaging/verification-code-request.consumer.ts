@@ -7,37 +7,44 @@ import { DOMAIN_EVENTS_CHANNELS } from '../../../../shared/queue/domain-events.c
 
 import type { MessageQueue } from '../../../../shared/application/ports/message-queue.port';
 
-interface UserLoggedInPayload extends Record<string, string> {
+interface VerificationCodeTriggerPayload extends Record<string, string> {
   userId: string;
   name: string;
 }
 
-const USER_LOGGED_IN_EVENT = 'UserLoggedIn';
+const TRIGGER_EVENTS = new Set(['UserLoggedIn', 'UserRegistered']);
 
 /**
  * `AccountVerificationController`'s doc comment anticipates this:
- * `GenerateVerificationCodeUseCase` is never exposed as a route, it
- * only ever runs off `UserLoggedIn` — `LoginUseCase` confirms
- * credentials and publishes that event but never issues tokens itself
- * (see its own doc comment), so without this consumer a successful
- * login would never actually get the user a code to complete
- * authentication with. Subscribes to Account Verification's own copy
- * of the domain events stream and ignores every event but this one.
+ * `GenerateVerificationCodeUseCase` is never exposed as a route, it only
+ * ever runs off domain events — `LoginUseCase` confirms credentials but
+ * never issues tokens itself, and `RegisterUserUseCase` never issues a
+ * code inline either, so without this consumer neither a login nor a
+ * fresh registration would ever get the user a code to complete
+ * authentication with.
+ *
+ * A single consumer handles both triggers rather than one per event:
+ * `BullMqMessageQueue.consume` maps a channel to exactly one BullMQ
+ * `Worker`, and two `Worker`s on the same queue name are competing
+ * consumers, not fan-out — a second `consume()` call on this channel
+ * would silently never receive anything (see `DOMAIN_EVENTS_CHANNELS`).
+ * Subscribes to Account Verification's own copy of the domain events
+ * stream and ignores every event but the two it reacts to.
  */
 @Injectable()
-export class UserLoggedInConsumer implements OnModuleInit {
+export class VerificationCodeRequestConsumer implements OnModuleInit {
   constructor(
     @Inject(MESSAGE_QUEUE) private readonly messageQueue: MessageQueue,
     private readonly generateVerificationCodeUseCase: GenerateVerificationCodeUseCase,
   ) {}
 
   onModuleInit(): void {
-    this.messageQueue.consume<DomainEvent<UserLoggedInPayload>>(
+    this.messageQueue.consume<DomainEvent<VerificationCodeTriggerPayload>>(
       DOMAIN_EVENTS_CHANNELS.ACCOUNT_VERIFICATION,
       async (message) => {
         const event = message.payload;
 
-        if (event.name !== USER_LOGGED_IN_EVENT || !event.recipientEmail) {
+        if (!TRIGGER_EVENTS.has(event.name) || !event.recipientEmail) {
           return;
         }
 

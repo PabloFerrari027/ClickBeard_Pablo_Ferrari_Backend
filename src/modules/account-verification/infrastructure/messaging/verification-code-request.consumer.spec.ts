@@ -1,13 +1,13 @@
-import { UserLoggedInConsumer } from './user-logged-in.consumer';
+import { VerificationCodeRequestConsumer } from './verification-code-request.consumer';
 import { GenerateVerificationCodeUseCase } from '../../core/application/use-cases/generate-verification-code.use-case';
 import { DOMAIN_EVENTS_CHANNELS } from '../../../../shared/queue/domain-events.channel';
 
 import type { MessageQueue } from '../../../../shared/application/ports/message-queue.port';
 
-describe('UserLoggedInConsumer', () => {
+describe('VerificationCodeRequestConsumer', () => {
   let messageQueue: jest.Mocked<MessageQueue>;
   let generateVerificationCodeUseCase: jest.Mocked<GenerateVerificationCodeUseCase>;
-  let consumer: UserLoggedInConsumer;
+  let consumer: VerificationCodeRequestConsumer;
 
   function captureHandler(): (message: {
     id: string;
@@ -27,15 +27,16 @@ describe('UserLoggedInConsumer', () => {
     generateVerificationCodeUseCase = {
       execute: jest.fn(),
     } as unknown as jest.Mocked<GenerateVerificationCodeUseCase>;
-    consumer = new UserLoggedInConsumer(
+    consumer = new VerificationCodeRequestConsumer(
       messageQueue,
       generateVerificationCodeUseCase,
     );
   });
 
-  it("subscribes to Account Verification's own domain-events channel", () => {
+  it("subscribes once to Account Verification's own domain-events channel", () => {
     consumer.onModuleInit();
 
+    expect(messageQueue.consume).toHaveBeenCalledTimes(1);
     expect(messageQueue.consume).toHaveBeenCalledWith(
       DOMAIN_EVENTS_CHANNELS.ACCOUNT_VERIFICATION,
       expect.any(Function),
@@ -63,11 +64,32 @@ describe('UserLoggedInConsumer', () => {
     });
   });
 
-  it('ignores events other than UserLoggedIn', async () => {
+  it('generates a verification code when a UserRegistered event arrives', async () => {
     const handler = captureHandler();
 
     await handler({
-      id: 'job-1',
+      id: 'job-2',
+      channel: 'x',
+      payload: {
+        name: 'UserRegistered',
+        occurredAt: new Date(),
+        recipientEmail: 'jane@example.com',
+        payload: { userId: 'user-1', name: 'Jane Doe' },
+      },
+    });
+
+    expect(generateVerificationCodeUseCase.execute).toHaveBeenCalledWith({
+      userId: 'user-1',
+      email: 'jane@example.com',
+      name: 'Jane Doe',
+    });
+  });
+
+  it('ignores events other than UserLoggedIn/UserRegistered', async () => {
+    const handler = captureHandler();
+
+    await handler({
+      id: 'job-3',
       channel: 'x',
       payload: {
         name: 'PasswordChanged',
@@ -80,14 +102,14 @@ describe('UserLoggedInConsumer', () => {
     expect(generateVerificationCodeUseCase.execute).not.toHaveBeenCalled();
   });
 
-  it('ignores a UserLoggedIn event with no recipientEmail', async () => {
+  it('ignores a trigger event with no recipientEmail', async () => {
     const handler = captureHandler();
 
     await handler({
-      id: 'job-1',
+      id: 'job-4',
       channel: 'x',
       payload: {
-        name: 'UserLoggedIn',
+        name: 'UserRegistered',
         occurredAt: new Date(),
         payload: { userId: 'user-1', name: 'Jane Doe' },
       },
