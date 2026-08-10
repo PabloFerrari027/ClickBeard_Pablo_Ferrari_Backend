@@ -1,0 +1,134 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+
+    image: clickbeard-app
+
+    container_name: clickbeard-api
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      NODE_ENV: production
+
+      # Containers conversam pelo nome do serviço
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    networks:
+      - clickbeard-network
+
+  postgres:
+    image: postgres:17
+
+    container_name: clickbeard-postgres
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - clickbeard-network
+
+  redis:
+    image: redis:8-alpine
+
+    container_name: clickbeard-redis
+
+    restart: unless-stopped
+
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD}",
+      ]
+
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
+
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+    networks:
+      - clickbeard-network
+
+  database-migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: database-migration
+
+    image: clickbeard-database-migration
+
+    container_name: clickbeard-database-migration
+
+    env_file:
+      - .env
+
+    environment:
+      NODE_ENV: production
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - clickbeard-network
+
+networks:
+  clickbeard-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: clickbeard_postgres_data
+
+  redis_data:
+    name: clickbeard_redis_data
