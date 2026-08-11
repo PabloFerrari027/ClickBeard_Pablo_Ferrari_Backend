@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 
 import { PASSWORD_HASHER } from '../identity/core/application/ports/password-hasher.port';
+import { USER_REPOSITORY } from '../identity/core/application/ports/user-repository.port';
 import { CompleteAuthenticationUseCase } from './core/application/use-cases/complete-authentication.use-case';
 import { GenerateVerificationCodeUseCase } from './core/application/use-cases/generate-verification-code.use-case';
 import { InvalidateExpiredVerificationCodesUseCase } from './core/application/use-cases/invalidate-expired-verification-codes.use-case';
@@ -23,6 +24,7 @@ import { EVENT_BUS } from '../../shared/application/ports/event-bus.port';
 import { AccountVerificationController } from './presentation/controllers/account-verification.controller';
 
 import type { PasswordHasher } from '../identity/core/application/ports/password-hasher.port';
+import type { UserRepository } from '../identity/core/application/ports/user-repository.port';
 import type { SessionManager } from './core/application/ports/session-manager.port';
 import type { VerificationCodeGenerator } from './core/application/ports/verification-code-generator.port';
 import type { VerificationCodeRepository } from './core/application/ports/verification-code-repository.port';
@@ -70,9 +72,14 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
     {
       provide: ResendVerificationCodeUseCase,
       useFactory: (
+        userRepository: UserRepository,
         generateVerificationCodeUseCase: GenerateVerificationCodeUseCase,
-      ) => new ResendVerificationCodeUseCase(generateVerificationCodeUseCase),
-      inject: [GenerateVerificationCodeUseCase],
+      ) =>
+        new ResendVerificationCodeUseCase(
+          userRepository,
+          generateVerificationCodeUseCase,
+        ),
+      inject: [USER_REPOSITORY, GenerateVerificationCodeUseCase],
     },
     {
       provide: ValidateVerificationCodeUseCase,
