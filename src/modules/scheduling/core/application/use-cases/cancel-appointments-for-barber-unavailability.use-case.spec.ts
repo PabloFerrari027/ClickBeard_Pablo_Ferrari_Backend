@@ -77,7 +77,7 @@ describe('CancelAppointmentsForBarberUnavailabilityUseCase', () => {
     );
   });
 
-  it('cancels every affected appointment with a prefixed reason and notifies each customer', async () => {
+  it('cancels every affected appointment with the given reason and notifies each customer', async () => {
     const appointmentOne = buildAppointment({ id: 'appointment-1' });
     const appointmentTwo = buildAppointment({
       id: 'appointment-2',
@@ -104,12 +104,8 @@ describe('CancelAppointmentsForBarberUnavailabilityUseCase', () => {
       'appointment-1',
       'appointment-2',
     ]);
-    expect(appointmentOne.getCancellationReason()).toBe(
-      'Barbeiro indisponível: Sick leave',
-    );
-    expect(appointmentTwo.getCancellationReason()).toBe(
-      'Barbeiro indisponível: Sick leave',
-    );
+    expect(appointmentOne.getCancellationReason()).toBe('Sick leave');
+    expect(appointmentTwo.getCancellationReason()).toBe('Sick leave');
     expect(appointmentRepository.save).toHaveBeenCalledTimes(2);
     expect(eventBus.publish).toHaveBeenCalledTimes(2);
     expect(eventBus.publish.mock.calls[0][0].name).toBe(

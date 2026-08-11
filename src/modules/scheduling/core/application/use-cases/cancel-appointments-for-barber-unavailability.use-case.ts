@@ -38,7 +38,6 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
         input.endAt,
       );
 
-    const reason = `Barbeiro indisponível: ${input.reason}`;
     const cancelledAppointments: AppointmentDto[] = [];
 
     for (const appointment of appointments) {
@@ -52,7 +51,7 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
 
       const now = new Date();
 
-      appointment.cancelByAdmin(now, reason);
+      appointment.cancelByAdmin(now, input.reason);
 
       await this.appointmentRepository.save(appointment);
 
