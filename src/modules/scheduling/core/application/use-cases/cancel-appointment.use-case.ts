@@ -3,6 +3,7 @@ import { AppointmentAccessDeniedError } from '../../domain/errors/appointment-ac
 import { AppointmentNotFoundError } from '../../domain/errors/appointment-not-found.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { AppointmentCancelledEvent } from '../../domain/events/appointment-cancelled.event';
+import { formatBusinessDateTime } from '../../domain/value-objects/time-slot.value-object';
 import {
   CancelAppointmentInputDto,
   CancelAppointmentOutputDto,
@@ -58,7 +59,7 @@ export class CancelAppointmentUseCase implements UseCase<
           appointmentId: appointment.getId(),
           customerId: appointment.getCustomerId(),
           barberId: appointment.getBarberId(),
-          startAt: appointment.getTimeSlot().getStart().toISOString(),
+          startAt: formatBusinessDateTime(appointment.getTimeSlot().getStart()),
           name: customer.getName(),
         },
         now,

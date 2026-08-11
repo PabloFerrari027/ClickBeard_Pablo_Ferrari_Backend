@@ -6,6 +6,7 @@ import {
   CancelAppointmentsForBarberUnavailabilityOutputDto,
 } from '../dtos/cancel-appointments-for-barber-unavailability.dto';
 import { toAppointmentDto } from '../mappers/appointment.mapper';
+import { formatBusinessDateTime } from '../../domain/value-objects/time-slot.value-object';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
@@ -38,7 +39,6 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
         input.endAt,
       );
 
-    const reason = `Barbeiro indisponível: ${input.reason}`;
     const cancelledAppointments: AppointmentDto[] = [];
 
     for (const appointment of appointments) {
@@ -52,7 +52,7 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
 
       const now = new Date();
 
-      appointment.cancelByAdmin(now, reason);
+      appointment.cancelByAdmin(now, input.reason);
 
       await this.appointmentRepository.save(appointment);
 
@@ -63,7 +63,9 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
             appointmentId: appointment.getId(),
             customerId: appointment.getCustomerId(),
             barberId: appointment.getBarberId(),
-            startAt: appointment.getTimeSlot().getStart().toISOString(),
+            startAt: formatBusinessDateTime(
+              appointment.getTimeSlot().getStart(),
+            ),
             reason: appointment.getCancellationReason() as string,
             name: customer.getName(),
           },
