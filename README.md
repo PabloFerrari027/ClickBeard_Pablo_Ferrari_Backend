@@ -338,6 +338,18 @@ ClickBeard_Pablo_Ferrari/
 
 ### 5.2 Instalação
 
+**Opção A — script de setup automatizado (recomendado):** instala as dependências, cria o `.env` a partir do `.env.example` (se ainda não existir), sobe `postgres`+`redis` via Docker, roda as migrations e o seeder do admin inicial — tudo em um único comando. Requer Docker rodando; se já existirem containers `postgres`/`redis` de outro projeto usando os mesmos nomes, pare-os antes (`docker rm -f postgres redis`), já que os nomes são fixos no `docker-compose.yml`.
+
+```bash
+npm run setup:windows   # Windows (PowerShell)
+npm run setup:linex     # Linux
+npm run setup:mac       # macOS
+```
+
+Os três apontam, respectivamente, para `scripts/setup.ps1` e `scripts/setup.sh` (o mesmo script serve Linux e macOS). Ao final, o admin inicial já está semeado e a aplicação pode ser iniciada com `npm run dev`. Como o `.env` só é criado se ainda não existir, rodar o script de novo é seguro (idempotente) — reexecuta `npm install`, sobe os containers se estiverem parados e reaplica apenas migrations/seeds pendentes.
+
+**Opção B — manual:**
+
 ```bash
 npm install
 cp .env.example .env
