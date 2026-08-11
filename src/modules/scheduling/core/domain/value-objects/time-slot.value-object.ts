@@ -75,6 +75,22 @@ export function getBusinessDayBounds(date: Date): { start: Date; end: Date } {
 }
 
 /**
+ * Parses a `YYYY-MM-DD` calendar-day selector (e.g. a `?date=` query
+ * param) as business-timezone midnight of that day — NOT as a UTC
+ * instant. `new Date('2026-01-11')` parses to 2026-01-11T00:00:00 UTC,
+ * which `getBusinessDayBounds` (offset -03:00) resolves back to
+ * 2026-01-10 business-local — the caller's requested day, off by one.
+ * Every caller that means "give me this calendar day" (not "give me
+ * whatever day this instant falls on") must go through this instead of
+ * `new Date(dateOnly)`.
+ */
+export function parseBusinessCalendarDate(dateOnly: string): Date {
+  const [year, month, day] = dateOnly.slice(0, 10).split('-').map(Number);
+
+  return fromBusinessLocalMinutes(year, month - 1, day, 0);
+}
+
+/**
  * A fixed 30-minute window that fits within business hours (08:00-18:00
  * America/Sao_Paulo), aligned to the 30-minute grid. Purely structural —
  * whether the slot is still in the future is a separate concern for
