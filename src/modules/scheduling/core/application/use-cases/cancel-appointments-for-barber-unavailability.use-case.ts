@@ -1,9 +1,11 @@
 import { UserRepository } from '../../../../identity/core/application/ports/user-repository.port';
 import { AppointmentCancelledByAdminEvent } from '../../domain/events/appointment-cancelled-by-admin.event';
+import { AppointmentDto } from '../dtos/appointment.dto';
 import {
   CancelAppointmentsForBarberUnavailabilityInputDto,
   CancelAppointmentsForBarberUnavailabilityOutputDto,
 } from '../dtos/cancel-appointments-for-barber-unavailability.dto';
+import { toAppointmentDto } from '../mappers/appointment.mapper';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
 import { UseCase } from '../../../../../shared/application/use-case';
@@ -37,7 +39,7 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
       );
 
     const reason = `Barbeiro indisponível: ${input.reason}`;
-    let cancelledCount = 0;
+    const cancelledAppointments: AppointmentDto[] = [];
 
     for (const appointment of appointments) {
       const customer = await this.userRepository.findById(
@@ -69,9 +71,12 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
         ),
       );
 
-      cancelledCount += 1;
+      cancelledAppointments.push(toAppointmentDto(appointment));
     }
 
-    return { cancelledCount };
+    return {
+      cancelledCount: cancelledAppointments.length,
+      cancelledAppointments,
+    };
   }
 }

@@ -99,6 +99,10 @@ describe('CancelAppointmentsForBarberUnavailabilityUseCase', () => {
     });
 
     expect(result.cancelledCount).toBe(2);
+    expect(result.cancelledAppointments.map((a) => a.id)).toEqual([
+      'appointment-1',
+      'appointment-2',
+    ]);
     expect(appointmentOne.getCancellationReason()).toBe(
       'Barbeiro indisponível: Sick leave',
     );
@@ -123,6 +127,7 @@ describe('CancelAppointmentsForBarberUnavailabilityUseCase', () => {
     });
 
     expect(result.cancelledCount).toBe(0);
+    expect(result.cancelledAppointments).toEqual([]);
     expect(appointmentRepository.save).not.toHaveBeenCalled();
     expect(eventBus.publish).not.toHaveBeenCalled();
   });

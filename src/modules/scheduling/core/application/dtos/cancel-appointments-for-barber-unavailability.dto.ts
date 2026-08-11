@@ -1,3 +1,5 @@
+import { AppointmentDto } from './appointment.dto';
+
 export interface CancelAppointmentsForBarberUnavailabilityInputDto {
   barberId: string;
   startAt: Date;
@@ -7,4 +9,5 @@ export interface CancelAppointmentsForBarberUnavailabilityInputDto {
 
 export interface CancelAppointmentsForBarberUnavailabilityOutputDto {
   cancelledCount: number;
+  cancelledAppointments: AppointmentDto[];
 }
