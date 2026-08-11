@@ -38,28 +38,48 @@ describe('GetDashboardMetricsUseCase', () => {
     jest.useFakeTimers().setSystemTime(now);
 
     userMetricsQuery = {
-      countTotal: jest.fn().mockResolvedValue(0),
-      countByRole: jest.fn().mockResolvedValue([]),
-      countActive: jest.fn().mockResolvedValue(0),
-      countInactive: jest.fn().mockResolvedValue(0),
-      countRegisteredInRange: jest.fn().mockResolvedValue(0),
-      countPendingVerification: jest.fn().mockResolvedValue(0),
-      countVerified: jest.fn().mockResolvedValue(0),
+      countTotal: jest.fn().mockResolvedValue(42),
+      countByRole: jest.fn().mockResolvedValue([
+        { role: UserRole.CLIENT, total: 30 },
+        { role: UserRole.BARBER, total: 10 },
+        { role: UserRole.ADMIN, total: 2 },
+      ]),
+      countActive: jest.fn().mockResolvedValue(40),
+      countInactive: jest.fn().mockResolvedValue(2),
+      countRegisteredInRange: jest.fn().mockResolvedValue(5),
+      countPendingVerification: jest.fn().mockResolvedValue(3),
+      countVerified: jest.fn().mockResolvedValue(39),
     };
     appointmentMetricsQuery = {
-      countTotal: jest.fn().mockResolvedValue(0),
-      countInRange: jest.fn().mockResolvedValue(0),
-      countUpcoming: jest.fn().mockResolvedValue(0),
-      countCancelled: jest.fn().mockResolvedValue(0),
-      cancellationRate: jest.fn().mockResolvedValue(0),
-      mostUsedTimeSlots: jest.fn().mockResolvedValue([]),
-      busiestDaysOfWeek: jest.fn().mockResolvedValue([]),
+      countTotal: jest.fn().mockResolvedValue(100),
+      countInRange: jest.fn().mockResolvedValue(10),
+      countUpcoming: jest.fn().mockResolvedValue(20),
+      countCancelled: jest.fn().mockResolvedValue(5),
+      cancellationRate: jest.fn().mockResolvedValue(0.05),
+      mostUsedTimeSlots: jest
+        .fn()
+        .mockResolvedValue([{ startTime: '10:00', total: 8 }]),
+      busiestDaysOfWeek: jest
+        .fn()
+        .mockResolvedValue([{ dayOfWeek: 5, total: 12 }]),
     };
     barberMetricsQuery = {
-      countTotal: jest.fn().mockResolvedValue(0),
-      countAppointmentsByBarber: jest.fn().mockResolvedValue([]),
-      mostRequestedBarbers: jest.fn().mockResolvedValue([]),
-      mostUsedQualifications: jest.fn().mockResolvedValue([]),
+      countTotal: jest.fn().mockResolvedValue(8),
+      countAppointmentsByBarber: jest
+        .fn()
+        .mockResolvedValue([
+          { barberId: 'barber-1', barberName: 'John', total: 15 },
+        ]),
+      mostRequestedBarbers: jest
+        .fn()
+        .mockResolvedValue([
+          { barberId: 'barber-2', barberName: 'Alex', total: 9 },
+        ]),
+      mostUsedQualifications: jest
+        .fn()
+        .mockResolvedValue([
+          { qualificationId: 'qual-1', qualificationName: 'Fade', total: 20 },
+        ]),
       occupancyByBarber: jest.fn().mockResolvedValue([
         {
           barberId: 'barber-1',
@@ -72,9 +92,13 @@ describe('GetDashboardMetricsUseCase', () => {
       ]),
     };
     customerMetricsQuery = {
-      topCustomersByAppointments: jest.fn().mockResolvedValue([]),
-      countActiveCustomers: jest.fn().mockResolvedValue(0),
-      countInactiveCustomers: jest.fn().mockResolvedValue(0),
+      topCustomersByAppointments: jest
+        .fn()
+        .mockResolvedValue([
+          { customerId: 'customer-1', customerName: 'Alice', total: 6 },
+        ]),
+      countActiveCustomers: jest.fn().mockResolvedValue(25),
+      countInactiveCustomers: jest.fn().mockResolvedValue(4),
       findLastAppointmentByCustomer: jest.fn(),
     };
     userRepository = {
@@ -106,11 +130,65 @@ describe('GetDashboardMetricsUseCase', () => {
       filter: { preset: PeriodPreset.MONTH },
     });
 
-    expect(result.metrics.users).toBeDefined();
-    expect(result.metrics.appointments).toBeDefined();
-    expect(result.metrics.barbers).toBeDefined();
-    expect(result.metrics.customers).toBeDefined();
-    expect(result.metrics.occupation.averageOccupancyRate).toBe(0.6);
+    expect(result.metrics).toEqual({
+      users: {
+        totalUsers: 42,
+        totalByRole: [
+          { role: UserRole.CLIENT, total: 30 },
+          { role: UserRole.BARBER, total: 10 },
+          { role: UserRole.ADMIN, total: 2 },
+        ],
+        activeUsers: 40,
+        inactiveUsers: 2,
+        newUsersInPeriod: 5,
+        pendingVerification: 3,
+        verifiedAccounts: 39,
+      },
+      appointments: {
+        totalAppointments: 100,
+        appointmentsToday: 10,
+        appointmentsThisWeek: 10,
+        appointmentsThisMonth: 10,
+        appointmentsInPeriod: 10,
+        futureAppointments: 20,
+        cancelledAppointments: 5,
+        cancellationRate: 0.05,
+        mostUsedTimeSlots: [{ startTime: '10:00', total: 8 }],
+        busiestDaysOfWeek: [{ dayOfWeek: 5, total: 12 }],
+      },
+      barbers: {
+        totalBarbers: 8,
+        appointmentsByBarber: [
+          { barberId: 'barber-1', barberName: 'John', total: 15 },
+        ],
+        mostRequestedBarbers: [
+          { barberId: 'barber-2', barberName: 'Alex', total: 9 },
+        ],
+        mostUsedQualifications: [
+          { qualificationId: 'qual-1', qualificationName: 'Fade', total: 20 },
+        ],
+      },
+      customers: {
+        topCustomersByAppointments: [
+          { customerId: 'customer-1', customerName: 'Alice', total: 6 },
+        ],
+        activeCustomers: 25,
+        inactiveCustomers: 4,
+      },
+      occupation: {
+        occupancyByBarber: [
+          {
+            barberId: 'barber-1',
+            barberName: 'John',
+            bookedSlots: 6,
+            availableSlots: 10,
+            occupancyRate: 0.6,
+            freeTimeSlots: [],
+          },
+        ],
+        averageOccupancyRate: 0.6,
+      },
+    });
   });
 
   it('throws UserIsNotAdminError for a non-admin requester', async () => {
