@@ -3,6 +3,7 @@ import { CancellationReasonRequiredError } from '../errors/cancellation-reason-r
 import { CancellationWindowExpiredError } from '../errors/cancellation-window-expired.error';
 import { AppointmentStatus } from '../enums/appointment-status.enum';
 import { TimeSlot } from '../value-objects/time-slot.value-object';
+import { businessTime } from '../../../test-support/business-time';
 import { Appointment, AppointmentProps } from './appointment.entity';
 
 function buildProps(
@@ -13,7 +14,7 @@ function buildProps(
     customerId: 'customer-id',
     barberId: 'barber-id',
     qualificationId: 'qualification-id',
-    timeSlot: TimeSlot.create(new Date(2026, 0, 10, 10, 0, 0, 0)),
+    timeSlot: TimeSlot.create(businessTime(2026, 0, 10, 10, 0, 0, 0)),
     status: AppointmentStatus.SCHEDULED,
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),
@@ -27,7 +28,7 @@ describe('Appointment', () => {
   describe('create', () => {
     it('creates a scheduled appointment with a generated id', () => {
       const now = new Date(2026, 0, 1, 0, 0, 0, 0);
-      const timeSlot = TimeSlot.create(new Date(2026, 0, 10, 10, 0, 0, 0));
+      const timeSlot = TimeSlot.create(businessTime(2026, 0, 10, 10, 0, 0, 0));
 
       const appointment = Appointment.create({
         customerId: 'customer-id',
@@ -49,7 +50,7 @@ describe('Appointment', () => {
   describe('cancel', () => {
     it('cancels an appointment at least 2 hours before its start', () => {
       const appointment = Appointment.restore(buildProps());
-      const now = new Date(2026, 0, 10, 7, 0, 0, 0);
+      const now = businessTime(2026, 0, 10, 7, 0, 0, 0);
 
       appointment.cancel(now);
 
@@ -60,14 +61,14 @@ describe('Appointment', () => {
 
     it('allows cancellation exactly 2 hours before the start', () => {
       const appointment = Appointment.restore(buildProps());
-      const now = new Date(2026, 0, 10, 8, 0, 0, 0);
+      const now = businessTime(2026, 0, 10, 8, 0, 0, 0);
 
       expect(() => appointment.cancel(now)).not.toThrow();
     });
 
     it('throws CancellationWindowExpiredError when less than 2 hours remain', () => {
       const appointment = Appointment.restore(buildProps());
-      const now = new Date(2026, 0, 10, 8, 30, 0, 0);
+      const now = businessTime(2026, 0, 10, 8, 30, 0, 0);
 
       expect(() => appointment.cancel(now)).toThrow(
         CancellationWindowExpiredError,

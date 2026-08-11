@@ -1,21 +1,6 @@
 import { InvalidTimeSlotError } from '../errors/invalid-time-slot.error';
+import { businessTime as spTime } from '../../../test-support/business-time';
 import { TimeSlot } from './time-slot.value-object';
-
-/**
- * Builds the UTC instant for the given America/Sao_Paulo (fixed UTC-3) wall-clock
- * time, independent of the machine running the tests.
- */
-function spTime(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute = 0,
-  second = 0,
-  ms = 0,
-): Date {
-  return new Date(Date.UTC(year, month, day, hour + 3, minute, second, ms));
-}
 
 describe('TimeSlot', () => {
   describe('create', () => {
