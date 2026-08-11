@@ -56,7 +56,9 @@ export class SequelizeAvailabilityService implements AvailabilityService {
         transaction: TransactionContext.current(),
       });
 
-      return models.map((model) => TimeSlot.create(model.startAt));
+      return models.map((model) =>
+        TimeSlot.restore(model.startAt, model.endAt),
+      );
     } catch (error) {
       throw mapToPersistenceError(error);
     }
