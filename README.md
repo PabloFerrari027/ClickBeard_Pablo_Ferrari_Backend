@@ -380,6 +380,7 @@ Todas validadas na inicialização por `EnvConfig` (`src/shared/config/env.confi
 | `SYSTEM_LANGUAGE` | não | `en` (fallback) | Idioma dos e-mails transacionais — só `pt-BR` (e variantes como `pt`/`pt_BR`) é reconhecido como alternativa; qualquer outro valor, ou ausente, cai em `en` |
 | `CORS_ORIGIN` | não | `*` | `*` ou lista separada por vírgula |
 | `THROTTLE_TTL_MS` / `THROTTLE_LIMIT` | não | `60000` / `100` | Janela e limite do rate limiter global |
+| `BUSINESS_TIMEZONE_UTC_OFFSET` | não | `-03:00` | Offset UTC (`±HH:MM`) ao qual o horário comercial do agendamento (08:00–18:00) é ancorado — ver seção 11.6 |
 | `SEED_ADMIN_NAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | apenas para `seed:up` | — | **Não lidas pela aplicação em runtime** — só pelo seeder do admin inicial |
 
 ### 5.4 Subindo com Docker (recomendado)
@@ -680,6 +681,7 @@ Toda escrita relevante invalida por **prefixo** (`deleteByPrefix`, via `SCAN` + 
 - `CreateQualificationUseCase`/`UpdateQualificationUseCase`/`DeleteQualificationUseCase` invalidam a chave única `qualifications`.
 - `ChangePasswordUseCase`/`ChangeUserRoleUseCase`/`DeactivateUserUseCase`/`ActivateUserUseCase` invalidam `user:{id}`.
 - `CancelAppointmentByAdminUseCase` invalida exatamente os mesmos prefixos de `CancelAppointmentUseCase` (é o mesmo efeito de negócio — um agendamento deixou de estar `SCHEDULED` — só muda quem o disparou e se um motivo foi registrado).
+- `CancelAppointmentsForBarberUnavailabilityUseCase` invalida, para **cada** agendamento cancelado na cascata, os mesmos prefixos de `CancelAppointmentByAdminUseCase` (`appointmentPrefix`, `barberTimeSlotsPrefix`, `customerAppointmentsPrefix` do cliente e do barbeiro), além de `todayAppointmentsPrefix()`/`futureAppointmentsPrefix()` uma vez para o lote. Faltava até pouco tempo atrás — o use case só retornava `cancelledCount`, sem os dados necessários para montar as chaves, então a cascata nunca invalidava nada; um `GET /appointments/:id` já cacheado continuava servindo `SCHEDULED` por até 1 min (o TTL de `APPOINTMENT`) mesmo depois do cancelamento ter sido persistido no banco.
 - `CreateBarberUnavailabilityUseCase`/`DeleteBarberUnavailabilityUseCase` invalidam `time-slots:{barberId}:*` via um novo helper, `CacheKeyGenerator.barberAllTimeSlotsPrefix(barberId)` — **sem** o segmento de data que `barberTimeSlotsPrefix` normalmente exige, porque um período de indisponibilidade pode cobrir vários dias de uma vez; invalidar dia a dia seria mais uma chamada por dia coberto, sem necessidade real dado que `AVAILABLE_TIME_SLOTS` já expira em 30s.
 
 ### 9.4 Impacto de uma falha do Redis
@@ -824,11 +826,12 @@ sequenceDiagram
     BUC->>CancelForUnav: execute({barberId, startAt, endAt, reason})
     CancelForUnav->>CancelForUnav: busca agendamentos SCHEDULED do<br/>barbeiro no intervalo
     loop cada agendamento afetado
-        CancelForUnav->>Appt: cancelByAdmin(now, "Barber unavailable: "+reason)
+        CancelForUnav->>Appt: cancelByAdmin(now, "Barbeiro indisponível: "+reason)
         CancelForUnav->>Bus: publish(AppointmentCancelledByAdminEvent)
         Bus->>DEC: evento na fila notifications
         DEC->>SMTP: envia e-mail ao cliente com o motivo
     end
+    CancelForUnav->>CancelForUnav: invalida cache (appointment, time-slots,<br/>listas do cliente/barbeiro) para cada<br/>agendamento cancelado — ver seção 9.3
 ```
 
 Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmin` — a cascata não é um caminho de notificação separado, é o mesmo evento e o mesmo template, só que publicado por um caminho diferente (`CancelAppointmentsForBarberUnavailabilityUseCase` em vez de `CancelAppointmentByAdminUseCase`).
@@ -905,7 +908,7 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 
 | Regra | Detalhe |
 |---|---|
-| Horário comercial fixo | 08:00–18:00 (`OPENING_HOUR`/`CLOSING_HOUR`) |
+| Horário comercial fixo | 08:00–18:00 (`OPENING_HOUR`/`CLOSING_HOUR`), ancorado ao offset `BUSINESS_TIMEZONE_UTC_OFFSET` (padrão `-03:00`, America/Sao_Paulo) via aritmética em UTC — independe do timezone do processo Node, evitando que o expediente "deslize" quando o servidor roda em UTC (ex.: container Docker) |
 | Slots de 30 minutos, alinhados à grade | `APPOINTMENT_DURATION_MINUTES = 30`; um horário fora da grade ou fora do expediente é `InvalidTimeSlotError` |
 | Reservar não exige antecedência mínima | Só não é possível reservar um horário que já começou (`AppointmentTooSoonError`) |
 | **Cancelar exige aviso mínimo de 2 horas** | `MIN_APPOINTMENT_NOTICE_MS = 2h` — só se aplica a **cancelar** (`CancellationWindowExpiredError`); reservar não tem essa exigência |

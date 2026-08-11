@@ -16,6 +16,7 @@ import {
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
+import { businessTime } from '../../../test-support/business-time';
 import { CancelAppointmentUseCase } from './cancel-appointment.use-case';
 
 function buildAppointment(
@@ -26,7 +27,7 @@ function buildAppointment(
     customerId: 'customer-id',
     barberId: 'barber-id',
     qualificationId: 'qualification-id',
-    timeSlot: TimeSlot.create(new Date(2026, 0, 10, 10, 0, 0, 0)),
+    timeSlot: TimeSlot.create(businessTime(2026, 0, 10, 10, 0, 0, 0)),
     status: AppointmentStatus.SCHEDULED,
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),
@@ -91,7 +92,7 @@ describe('CancelAppointmentUseCase', () => {
   it('cancels the appointment and notifies the customer by email', async () => {
     const appointment = buildAppointment();
     appointmentRepository.findById.mockResolvedValue(appointment);
-    jest.setSystemTime(new Date(2026, 0, 10, 7, 0, 0, 0));
+    jest.setSystemTime(businessTime(2026, 0, 10, 7, 0, 0, 0));
 
     const result = await useCase.execute({
       appointmentId: 'appointment-id',
@@ -149,7 +150,7 @@ describe('CancelAppointmentUseCase', () => {
 
   it('throws CancellationWindowExpiredError when less than 2 hours remain', async () => {
     appointmentRepository.findById.mockResolvedValue(buildAppointment());
-    jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0, 0));
+    jest.setSystemTime(businessTime(2026, 0, 10, 9, 0, 0, 0));
 
     await expect(
       useCase.execute({

@@ -15,6 +15,7 @@ import {
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
+import { businessTime } from '../../../test-support/business-time';
 import { CancelAppointmentByAdminUseCase } from './cancel-appointment-by-admin.use-case';
 
 function buildAppointment(
@@ -25,7 +26,7 @@ function buildAppointment(
     customerId: 'customer-id',
     barberId: 'barber-id',
     qualificationId: 'qualification-id',
-    timeSlot: TimeSlot.create(new Date(2026, 0, 10, 10, 0, 0, 0)),
+    timeSlot: TimeSlot.create(businessTime(2026, 0, 10, 10, 0, 0, 0)),
     status: AppointmentStatus.SCHEDULED,
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),

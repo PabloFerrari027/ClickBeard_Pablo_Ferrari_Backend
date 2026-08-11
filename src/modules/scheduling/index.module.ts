@@ -355,13 +355,46 @@ import type { EventBus } from '../../shared/application/ports/event-bus.port';
         appointmentRepository: AppointmentRepository,
         userRepository: UserRepository,
         eventBus: EventBus,
+        cacheInvalidationService: CacheInvalidationService,
       ) =>
-        new CancelAppointmentsForBarberUnavailabilityUseCase(
-          appointmentRepository,
-          userRepository,
-          eventBus,
+        new CacheInvalidatingUseCase(
+          new CancelAppointmentsForBarberUnavailabilityUseCase(
+            appointmentRepository,
+            userRepository,
+            eventBus,
+          ),
+          cacheInvalidationService,
+          {
+            // Same effect per cancelled appointment as
+            // CancelAppointmentByAdminUseCase, just fanned out across
+            // every appointment this cascade touched — without this, a
+            // customer's already-cached GET /appointments/:id (or list)
+            // keeps serving the pre-cancellation SCHEDULED snapshot.
+            buildPrefixes: (_input, output) => [
+              ...output.cancelledAppointments.flatMap((appointment) => [
+                CacheKeyGenerator.appointmentPrefix(appointment.id),
+                CacheKeyGenerator.barberTimeSlotsPrefix(
+                  appointment.barberId,
+                  appointment.startAt,
+                ),
+                CacheKeyGenerator.customerAppointmentsPrefix(
+                  appointment.customerId,
+                ),
+                CacheKeyGenerator.customerAppointmentsPrefix(
+                  appointment.barberId,
+                ),
+              ]),
+              CacheKeyGenerator.todayAppointmentsPrefix(),
+              CacheKeyGenerator.futureAppointmentsPrefix(),
+            ],
+          },
         ),
-      inject: [APPOINTMENT_REPOSITORY, USER_REPOSITORY, EVENT_BUS],
+      inject: [
+        APPOINTMENT_REPOSITORY,
+        USER_REPOSITORY,
+        EVENT_BUS,
+        CACHE_INVALIDATION_SERVICE,
+      ],
     },
     BarberUnavailabilityCreatedConsumer,
   ],

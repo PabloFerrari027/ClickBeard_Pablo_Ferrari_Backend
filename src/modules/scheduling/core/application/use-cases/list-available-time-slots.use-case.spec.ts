@@ -3,6 +3,7 @@ import { BarberNotFoundError } from '../../domain/errors/barber-not-found.error'
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AvailabilityService } from '../ports/availability-service.port';
 import { BarberDirectory } from '../ports/barber-directory.port';
+import { businessTime } from '../../../test-support/business-time';
 import { ListAvailableTimeSlotsUseCase } from './list-available-time-slots.use-case';
 
 describe('ListAvailableTimeSlotsUseCase', () => {
@@ -10,7 +11,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
   let availabilityService: jest.Mocked<AvailabilityService>;
   let useCase: ListAvailableTimeSlotsUseCase;
 
-  const date = new Date(2026, 0, 10, 0, 0, 0, 0);
+  const date = businessTime(2026, 0, 10, 0, 0, 0, 0);
 
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date(2026, 0, 1, 0, 0, 0, 0));
@@ -55,7 +56,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
 
   it('excludes already booked slots', async () => {
     availabilityService.getBookedSlots.mockResolvedValue([
-      TimeSlot.create(new Date(2026, 0, 10, 9, 0, 0, 0)),
+      TimeSlot.create(businessTime(2026, 0, 10, 9, 0, 0, 0)),
     ]);
 
     const result = await useCase.execute({
@@ -69,7 +70,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
       result.timeSlots.some(
         (slot) =>
           slot.startAt.getTime() ===
-          new Date(2026, 0, 10, 9, 0, 0, 0).getTime(),
+          businessTime(2026, 0, 10, 9, 0, 0, 0).getTime(),
       ),
     ).toBe(false);
   });
@@ -77,7 +78,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
   it('excludes slots blocked by a barber unavailability period', async () => {
     availabilityService.getBookedSlots.mockResolvedValue([]);
     availabilityService.getUnavailableSlots.mockResolvedValue([
-      TimeSlot.create(new Date(2026, 0, 10, 9, 0, 0, 0)),
+      TimeSlot.create(businessTime(2026, 0, 10, 9, 0, 0, 0)),
     ]);
 
     const result = await useCase.execute({
@@ -91,14 +92,14 @@ describe('ListAvailableTimeSlotsUseCase', () => {
       result.timeSlots.some(
         (slot) =>
           slot.startAt.getTime() ===
-          new Date(2026, 0, 10, 9, 0, 0, 0).getTime(),
+          businessTime(2026, 0, 10, 9, 0, 0, 0).getTime(),
       ),
     ).toBe(false);
   });
 
   it('excludes slots that have already passed today', async () => {
     availabilityService.getBookedSlots.mockResolvedValue([]);
-    jest.setSystemTime(new Date(2026, 0, 10, 12, 0, 0, 0));
+    jest.setSystemTime(businessTime(2026, 0, 10, 12, 0, 0, 0));
 
     const result = await useCase.execute({
       barberId: 'barber-id',
@@ -110,7 +111,7 @@ describe('ListAvailableTimeSlotsUseCase', () => {
       result.timeSlots.every(
         (slot) =>
           slot.startAt.getTime() >=
-          new Date(2026, 0, 10, 12, 0, 0, 0).getTime(),
+          businessTime(2026, 0, 10, 12, 0, 0, 0).getTime(),
       ),
     ).toBe(true);
   });

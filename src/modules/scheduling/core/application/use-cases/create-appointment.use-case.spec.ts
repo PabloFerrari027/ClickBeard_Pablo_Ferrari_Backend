@@ -19,6 +19,7 @@ import {
 } from '../ports/barber-directory.port';
 import { TransactionManager } from '../ports/transaction-manager.port';
 import { EventBus } from '../../../../../shared/application/ports/event-bus.port';
+import { businessTime } from '../../../test-support/business-time';
 import { CreateAppointmentUseCase } from './create-appointment.use-case';
 
 function buildCustomer(active = true, role: UserRole = UserRole.CLIENT): User {
@@ -112,7 +113,7 @@ describe('CreateAppointmentUseCase', () => {
     customerId: 'customer-id',
     barberId: 'barber-id',
     qualificationId: 'qualification-id',
-    startAt: new Date(2026, 0, 10, 10, 0, 0, 0),
+    startAt: businessTime(2026, 0, 10, 10, 0, 0, 0),
   };
 
   it('creates an appointment and publishes AppointmentCreated', async () => {
@@ -190,7 +191,7 @@ describe('CreateAppointmentUseCase', () => {
     await expect(
       useCase.execute({
         ...validInput,
-        startAt: new Date(2026, 0, 10, 10, 15, 0, 0),
+        startAt: businessTime(2026, 0, 10, 10, 15, 0, 0),
       }),
     ).rejects.toThrow(InvalidTimeSlotError);
   });
@@ -210,7 +211,7 @@ describe('CreateAppointmentUseCase', () => {
   });
 
   it('allows creation the instant the slot starts', async () => {
-    jest.setSystemTime(new Date(2026, 0, 10, 10, 0, 0, 0));
+    jest.setSystemTime(businessTime(2026, 0, 10, 10, 0, 0, 0));
 
     await expect(useCase.execute(validInput)).resolves.toBeDefined();
   });

@@ -7,6 +7,7 @@ import { AppointmentStatus } from '../../domain/enums/appointment-status.enum';
 import { Appointment } from '../../domain/entities/appointment.entity';
 import { TimeSlot } from '../../domain/value-objects/time-slot.value-object';
 import { AppointmentRepository } from '../ports/appointment-repository.port';
+import { businessTime } from '../../../test-support/business-time';
 import { ListCustomerAppointmentsUseCase } from './list-customer-appointments.use-case';
 
 function buildAppointment(
@@ -20,7 +21,7 @@ function buildAppointment(
     customerId,
     barberId,
     qualificationId: 'qualification-id',
-    timeSlot: TimeSlot.create(new Date(2026, 0, 10, hour, 0, 0, 0)),
+    timeSlot: TimeSlot.create(businessTime(2026, 0, 10, hour, 0, 0, 0)),
     status: AppointmentStatus.SCHEDULED,
     createdAt: new Date(2026, 0, 1, 0, 0, 0, 0),
     updatedAt: new Date(2026, 0, 1, 0, 0, 0, 0),

@@ -26,6 +26,7 @@ import { ListAvailableTimeSlotsUseCase } from '../../core/application/use-cases/
 import { ListCustomerAppointmentsUseCase } from '../../core/application/use-cases/list-customer-appointments.use-case';
 import { ListFutureAppointmentsUseCase } from '../../core/application/use-cases/list-future-appointments.use-case';
 import { ListTodayAppointmentsUseCase } from '../../core/application/use-cases/list-today-appointments.use-case';
+import { parseBusinessCalendarDate } from '../../core/domain/value-objects/time-slot.value-object';
 import { AppointmentResponseDto } from '../dtos/appointment.response.dto';
 import { CancelAppointmentByAdminRequestDto } from '../dtos/cancel-appointment-by-admin.request.dto';
 import { CreateAppointmentRequestDto } from '../dtos/create-appointment.request.dto';
@@ -123,7 +124,7 @@ export class AppointmentsController {
     return this.listAvailableTimeSlotsUseCase.execute({
       barberId: query.barberId,
       qualificationId: query.qualificationId,
-      date: new Date(query.date),
+      date: parseBusinessCalendarDate(query.date),
     });
   }
 

@@ -636,12 +636,24 @@ describe('Appointments (e2e)', () => {
     it('rejects booking with 409 BarberUnavailableError', async () => {
       const { session } = await registerAndLogin(app, notifications);
 
-      // Tomorrow at 09:00 local time: always grid-aligned (top of the
-      // hour) and within business hours — so this fails on
-      // unavailability, not slot alignment.
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(9, 0, 0, 0);
+      // Tomorrow at 09:00 business-local time (America/Sao_Paulo,
+      // UTC-3): always grid-aligned (top of the hour) and within
+      // business hours — so this fails on unavailability, not slot
+      // alignment. Built via UTC arithmetic (not setHours, which reads
+      // the *host* machine's timezone) so it means the same wall-clock
+      // instant regardless of where the test runs.
+      const tomorrowUtc = new Date(Date.now() + ONE_DAY_MS);
+      const tomorrow = new Date(
+        Date.UTC(
+          tomorrowUtc.getUTCFullYear(),
+          tomorrowUtc.getUTCMonth(),
+          tomorrowUtc.getUTCDate(),
+          9 + 3,
+          0,
+          0,
+          0,
+        ),
+      );
 
       const response = await request(app.getHttpServer())
         .post('/appointments')
