@@ -29,7 +29,7 @@ export function toAppointmentDomain(model: AppointmentModel): Appointment {
     customerId: model.customerId,
     barberId: model.barberId,
     qualificationId: model.qualificationId,
-    timeSlot: TimeSlot.create(model.startAt),
+    timeSlot: TimeSlot.restore(model.startAt, model.endAt),
     status: model.status,
     createdAt: model.createdAt,
     updatedAt: model.updatedAt,

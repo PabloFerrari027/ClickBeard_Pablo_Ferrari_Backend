@@ -50,6 +50,18 @@ describe('TimeSlot', () => {
     });
   });
 
+  describe('restore', () => {
+    it('reconstructs a slot outside current business hours without throwing', () => {
+      const start = spTime(2026, 0, 5, 19, 0, 0, 0);
+      const end = spTime(2026, 0, 5, 19, 30, 0, 0);
+
+      const slot = TimeSlot.restore(start, end);
+
+      expect(slot.getStart()).toEqual(start);
+      expect(slot.getEnd()).toEqual(end);
+    });
+  });
+
   describe('allForDate', () => {
     it('generates 20 slots covering the full business day', () => {
       const slots = TimeSlot.allForDate(spTime(2026, 0, 5, 12, 0, 0, 0));

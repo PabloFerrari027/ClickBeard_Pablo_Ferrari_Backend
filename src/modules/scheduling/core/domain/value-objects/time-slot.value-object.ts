@@ -131,6 +131,18 @@ export class TimeSlot {
     return new TimeSlot(start, end);
   }
 
+  /**
+   * Reconstructs a slot already persisted as valid, without re-running
+   * `create`'s business-hours/grid checks. Those checks are a booking-time
+   * gate, not an invariant of stored data — re-validating on every read
+   * means any later change to business hours (or the timezone they're
+   * anchored to) retroactively "invalidates" old rows and 500s every list
+   * endpoint that reads them, instead of just affecting new bookings.
+   */
+  static restore(start: Date, end: Date): TimeSlot {
+    return new TimeSlot(start, end);
+  }
+
   /** Every valid 30-minute slot for the business-timezone calendar day of the given date. */
   static allForDate(date: Date): TimeSlot[] {
     const slotsPerDay =
