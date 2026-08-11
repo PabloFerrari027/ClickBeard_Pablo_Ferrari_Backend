@@ -234,10 +234,15 @@ describe('Users (e2e)', () => {
   });
 
   describe('Admin-only user management', () => {
-    let adminSession: Awaited<ReturnType<typeof registerAndLogin>>['session'];
+    let nonAdminSession: Awaited<
+      ReturnType<typeof registerAndLogin>
+    >['session'];
 
     beforeAll(async () => {
-      ({ session: adminSession } = await registerAndLogin(app, notifications));
+      ({ session: nonAdminSession } = await registerAndLogin(
+        app,
+        notifications,
+      ));
     });
 
     it('rejects role changes from a non-admin with 403', async () => {
@@ -245,7 +250,7 @@ describe('Users (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch(`/users/${target.id}/role`)
-        .set(authHeader(adminSession.accessToken))
+        .set(authHeader(nonAdminSession.accessToken))
         .send({ role: 'BARBER' });
 
       expect(response.status).toBe(403);
