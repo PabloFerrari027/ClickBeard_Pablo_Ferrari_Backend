@@ -17,7 +17,7 @@ services:
     environment:
       NODE_ENV: production
 
-      # Containers conversam pelo nome do serviço
+      # Containers talk to each other by service name
       DB_HOST: postgres
       DB_PORT: 5432
 
