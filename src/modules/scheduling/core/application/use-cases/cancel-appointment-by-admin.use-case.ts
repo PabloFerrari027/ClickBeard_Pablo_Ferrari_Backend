@@ -2,6 +2,7 @@ import { UserRepository } from '../../../../identity/core/application/ports/user
 import { AppointmentNotFoundError } from '../../domain/errors/appointment-not-found.error';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
 import { AppointmentCancelledByAdminEvent } from '../../domain/events/appointment-cancelled-by-admin.event';
+import { formatBusinessDateTime } from '../../domain/value-objects/time-slot.value-object';
 import {
   CancelAppointmentByAdminInputDto,
   CancelAppointmentByAdminOutputDto,
@@ -56,7 +57,7 @@ export class CancelAppointmentByAdminUseCase implements UseCase<
           appointmentId: appointment.getId(),
           customerId: appointment.getCustomerId(),
           barberId: appointment.getBarberId(),
-          startAt: appointment.getTimeSlot().getStart().toISOString(),
+          startAt: formatBusinessDateTime(appointment.getTimeSlot().getStart()),
           reason: appointment.getCancellationReason() as string,
           name: customer.getName(),
         },

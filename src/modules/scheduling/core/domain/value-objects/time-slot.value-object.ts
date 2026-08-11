@@ -90,6 +90,24 @@ export function parseBusinessCalendarDate(dateOnly: string): Date {
   return fromBusinessLocalMinutes(year, month - 1, day, 0);
 }
 
+function pad(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+/**
+ * Renders `instant` as `DD/MM/YYYY HH:mm` on the business-timezone
+ * calendar/clock, for display in customer-facing text (e.g. notification
+ * emails). `.toISOString()` shows the raw UTC instant, which reads as the
+ * wrong wall-clock time to anyone in America/Sao_Paulo.
+ */
+export function formatBusinessDateTime(instant: Date): string {
+  const { year, month, date, minutesOfDay } = toBusinessLocalParts(instant);
+  const hours = Math.floor(minutesOfDay / 60);
+  const minutes = minutesOfDay % 60;
+
+  return `${pad(date)}/${pad(month + 1)}/${year} ${pad(hours)}:${pad(minutes)}`;
+}
+
 /**
  * A fixed 30-minute window that fits within business hours (08:00-18:00
  * America/Sao_Paulo), aligned to the 30-minute grid. Purely structural —
