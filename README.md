@@ -240,6 +240,7 @@ ClickBeard_Pablo_Ferrari/
 ├── Dockerfile                     # 4 estágios: base, development, build, production
 ├── .env.example
 └── .env.test                      # Config do banco/infra dedicados à suíte e2e
+```
 
 ### Convenção por camada dentro de um módulo
 
@@ -542,7 +543,7 @@ erDiagram
         boolean active
     }
     barbers {
-        uuid id PK_FK "= users.id"
+        uuid id PK, FK "= users.id"
         string name
         int age
         date hired_at
@@ -553,8 +554,8 @@ erDiagram
         text description
     }
     barbers_qualifications {
-        uuid barber_id PK_FK
-        uuid qualification_id PK_FK
+        uuid barber_id PK, FK
+        uuid qualification_id PK, FK
     }
     refresh_tokens {
         uuid id PK
