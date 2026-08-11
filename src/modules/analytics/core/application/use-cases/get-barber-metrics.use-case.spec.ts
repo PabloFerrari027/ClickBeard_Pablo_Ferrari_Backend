@@ -60,7 +60,7 @@ describe('GetBarberMetricsUseCase', () => {
       { barberId: 'barber-1', barberName: 'John', total: 15 },
     ]);
     barberMetricsQuery.mostRequestedBarbers.mockResolvedValue([
-      { barberId: 'barber-1', barberName: 'John', total: 15 },
+      { barberId: 'barber-2', barberName: 'Alex', total: 9 },
     ]);
     barberMetricsQuery.mostUsedQualifications.mockResolvedValue([
       { qualificationId: 'qual-1', qualificationName: 'Fade', total: 20 },
@@ -72,9 +72,15 @@ describe('GetBarberMetricsUseCase', () => {
     });
 
     expect(result.metrics.totalBarbers).toBe(8);
-    expect(result.metrics.appointmentsByBarber).toHaveLength(1);
-    expect(result.metrics.mostRequestedBarbers).toHaveLength(1);
-    expect(result.metrics.mostUsedQualifications).toHaveLength(1);
+    expect(result.metrics.appointmentsByBarber).toEqual([
+      { barberId: 'barber-1', barberName: 'John', total: 15 },
+    ]);
+    expect(result.metrics.mostRequestedBarbers).toEqual([
+      { barberId: 'barber-2', barberName: 'Alex', total: 9 },
+    ]);
+    expect(result.metrics.mostUsedQualifications).toEqual([
+      { qualificationId: 'qual-1', qualificationName: 'Fade', total: 20 },
+    ]);
   });
 
   it('throws UserIsNotAdminError for a non-admin requester', async () => {
