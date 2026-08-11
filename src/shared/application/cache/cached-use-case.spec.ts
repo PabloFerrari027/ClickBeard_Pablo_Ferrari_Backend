@@ -52,9 +52,8 @@ describe('CachedUseCase', () => {
 
     expect(result).toEqual({ value: 'fresh' });
     expect(innerUseCase.execute).toHaveBeenCalledWith({ id: 'barber-1' });
-    expect(cacheManager.get).toHaveBeenCalledWith(
-      expect.objectContaining({ value: expect.anything() }) as unknown,
-    );
+    const key = cacheManager.get.mock.calls[0][0];
+    expect(key.toString()).toBe('barber:barber-1');
     expect(cacheManager.set).toHaveBeenCalledWith(
       expect.anything(),
       { value: 'fresh' },
