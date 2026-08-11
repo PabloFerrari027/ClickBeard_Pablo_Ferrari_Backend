@@ -154,7 +154,7 @@ describe('Account Verification (e2e)', () => {
 
       const resendResponse = await request(app.getHttpServer())
         .post('/account-verification/resend')
-        .send({ userId, email: user.email, name: user.name });
+        .send({ userId });
 
       expect(resendResponse.status).toBe(200);
 
@@ -178,6 +178,36 @@ describe('Account Verification (e2e)', () => {
         .post('/account-verification/validate')
         .send({ userId, code: secondCode });
       expect(validateWithNewCode.status).toBe(200);
+    });
+
+    it('always sends the code to the account owner email, ignoring any client-supplied email', async () => {
+      const user = await registerUser(app);
+      const { userId, since } = await loginAndGetUserId(
+        user.email,
+        user.password,
+      );
+
+      await notifications.waitFor(
+        (n) =>
+          n.recipient === user.email &&
+          n.subject === 'Your ClickBeard verification code',
+        { since },
+      );
+
+      const resendResponse = await request(app.getHttpServer())
+        .post('/account-verification/resend')
+        .send({ userId, email: 'attacker@evil.com', name: 'Attacker' });
+
+      expect(resendResponse.status).toBe(400);
+    });
+
+    it('maps UserNotFoundError to 404 for an unknown userId', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/account-verification/resend')
+        .send({ userId: '00000000-0000-0000-0000-000000000000' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('UserNotFoundError');
     });
   });
 });
