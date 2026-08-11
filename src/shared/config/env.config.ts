@@ -7,6 +7,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
   validateSync,
@@ -176,6 +177,16 @@ export class EnvConfig {
   private readonly SYSTEM_LANGUAGE: string | undefined =
     process.env.SYSTEM_LANGUAGE || undefined;
 
+  /**
+   * UTC offset (±HH:MM) that scheduling business hours (08:00-18:00) are
+   * anchored to. Defaults to America/Sao_Paulo, which has been a fixed
+   * UTC-3 offset since Brazil abolished DST in 2019.
+   */
+  @IsOptional()
+  @Matches(/^[+-]\d{2}:\d{2}$/)
+  private readonly BUSINESS_TIMEZONE_UTC_OFFSET: string =
+    process.env.BUSINESS_TIMEZONE_UTC_OFFSET ?? '-03:00';
+
   constructor() {
     const errors = validateSync(this);
 
@@ -317,5 +328,15 @@ export class EnvConfig {
 
   get systemLanguage(): string | undefined {
     return this.SYSTEM_LANGUAGE;
+  }
+
+  /** `BUSINESS_TIMEZONE_UTC_OFFSET` (±HH:MM) converted to signed minutes. */
+  get businessTimezoneUtcOffsetMinutes(): number {
+    const [, sign, hours, minutes] = this.BUSINESS_TIMEZONE_UTC_OFFSET.match(
+      /^([+-])(\d{2}):(\d{2})$/,
+    ) as RegExpMatchArray;
+    const magnitude = Number(hours) * 60 + Number(minutes);
+
+    return sign === '-' ? -magnitude : magnitude;
   }
 }

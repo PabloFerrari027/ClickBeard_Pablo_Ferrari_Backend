@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 
+import { configureBusinessTimezone } from './modules/scheduling/core/domain/value-objects/time-slot.value-object';
 import { EnvConfig } from './shared/config/env.config';
 import { DomainErrorFilter } from './shared/presentation/filters/domain-error.filter';
 
@@ -16,6 +17,8 @@ export function configureApp(
   app: INestApplication,
   envConfig: EnvConfig,
 ): void {
+  configureBusinessTimezone(envConfig.businessTimezoneUtcOffsetMinutes);
+
   app.use(helmet());
   app.enableCors({ origin: envConfig.corsOrigins, credentials: true });
 
