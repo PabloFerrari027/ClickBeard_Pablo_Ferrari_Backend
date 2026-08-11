@@ -28,8 +28,8 @@ CMD ["npm", "run", "dev"]
 
 FROM base AS build
 
-# NÃO definir NODE_ENV=production aqui.
-# O build precisa das devDependencies, incluindo o Nest CLI.
+# Do NOT set NODE_ENV=production here.
+# The build needs the devDependencies, including the Nest CLI.
 
 RUN npm ci
 
@@ -49,13 +49,13 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
 
-# Instala apenas dependências necessárias em runtime
+# Installs only the dependencies needed at runtime
 RUN npm ci --omit=dev
 
-# Copia somente o código compilado
+# Copies only the compiled code
 COPY --from=build /app/dist ./dist
 
-# Arquivos necessários para Sequelize CLI/migrations
+# Files needed for Sequelize CLI/migrations
 COPY --from=build /app/database ./database
 COPY --from=build /app/.sequelizerc ./
 
@@ -73,8 +73,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# sequelize-cli está nas devDependencies,
-# portanto precisamos das dependências de desenvolvimento
+# sequelize-cli is in devDependencies,
+# so we need the development dependencies
 RUN npm ci
 
 COPY database ./database
