@@ -876,6 +876,7 @@ Reaproveita inteiramente o mecanismo da seção 10.1/`AppointmentCancelledByAdmi
 | Código hasheado com bcrypt | Nunca fica em texto puro no banco — só existe em claro no payload em memória do evento, até ser enviado por e-mail |
 | Sessão só é criada se o **último** código estiver consumido | `CompleteAuthenticationUseCase` re-checa isso no banco, não confia que `validate` foi chamado antes |
 | Varredura periódica invalida códigos expirados | A cada 15 minutos, via `ExpiredCodesSweepScheduler` |
+| `POST /account-verification/resend` recebe só `{ userId }` | O e-mail/nome de destino são resolvidos a partir do usuário no banco, nunca aceitos do client — impede que quem descubra um `userId` redirecione o código para um e-mail arbitrário |
 
 ### 11.4 Barber
 
@@ -978,7 +979,7 @@ npm run test:cov         # com relatório de cobertura em coverage/
 | `health.e2e-spec.ts` | `GET /health`, `GET /docs` |
 | `users.e2e-spec.ts` | Cadastro, autenticação direta, perfil (`self`/admin), listagem (admin-only), troca de senha, papel (promoção a `ADMIN`, regressão a `CLIENT`, rejeição de `role=BARBER` com `BarberRoleChangeNotAllowedError`), ativar/desativar |
 | `auth.e2e-spec.ts` | Login (sem sessão), fluxo completo até token, refresh (rotação), logout (revogação) |
-| `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior) |
+| `account-verification.e2e-spec.ts` | Validação de código (correto/errado/inexistente), complete antes/depois da validação, resend (invalida o anterior, rejeita `email`/`name` fora do whitelist, 404 para `userId` inexistente) |
 | `barbers.e2e-spec.ts` | CRUD de barbeiro (criação promove o `User` a `BARBER` automaticamente, sem promoção prévia; rejeição de segundo perfil para o mesmo `BARBER` e de criação para um `ADMIN`), gestão de qualificações do barbeiro, gating por admin |
 | `qualifications.e2e-spec.ts` | CRUD de qualificação, gating por admin |
 | `appointments.e2e-spec.ts` | Reserva (via slot real obtido de `/time-slots`, sem aviso mínimo — só não pode ser no passado), listagem própria, acesso negado a terceiro, cancelamento (próprio e administrativo com motivo), rejeição de reserva em janela de indisponibilidade, `/today` e `/future` restritos a admin, filtro de período (`startAt`/`endAt`) em `/future` incluindo e excluindo um agendamento e rejeição com 400 quando `startAt` vem depois de `endAt`, `BARBER` reservando com outro `BARBER` (e rejeição ao tentar reservar consigo mesmo), `BARBER` vendo/acessando via `/me` e `/:id` um agendamento em que é o profissional (com terceiro ainda recebendo 403) |
@@ -1056,6 +1057,7 @@ npm run test:e2e
 - Cada token carrega `sub` (id do usuário), `role`, e um `jti` (UUID aleatório) — o `jti` existe só para garantir unicidade do hash mesmo que dois tokens sejam emitidos no mesmo segundo (granularidade de `iat`).
 - **Refresh token rotativo com revogação em cadeia**: usar um refresh token gera um par novo e revoga o antigo (`revoked_at` + `replaced_by_token_id`), então um refresh token só pode ser trocado uma vez — reuso de um token já revogado é rejeitado.
 - **2FA obrigatório**: mesmo com credenciais corretas, nenhum token é emitido sem passar pela validação do código enviado por e-mail (seção 10.2).
+- **Destinatário do código de verificação nunca vem do client**: `POST /account-verification/resend` recebe só `{ userId }` — `email`/`name` são sempre resolvidos a partir do registro do usuário no banco (seção 11.3), evitando que um `userId` vazado seja usado para redirecionar o código de outra conta para um e-mail controlado por um atacante.
 
 ### Autorização
 
