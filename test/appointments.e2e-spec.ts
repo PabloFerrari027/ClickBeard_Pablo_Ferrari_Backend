@@ -5,6 +5,7 @@ import { UserRole } from '../src/modules/identity/core/domain/enums/user-role.en
 import {
   authHeader,
   completeLogin,
+  drainRegistrationVerificationEmail,
   getAdminSession,
   promoteUser,
   registerAndLogin,
@@ -249,6 +250,7 @@ describe('Appointments (e2e)', () => {
       userId: string;
     }> {
       const barberUser = await registerUser(app);
+      await drainRegistrationVerificationEmail(notifications, barberUser.email);
       const barberProfile = await request(app.getHttpServer())
         .post('/barbers')
         .set(authHeader(admin.accessToken))
