@@ -824,7 +824,7 @@ sequenceDiagram
     BUC->>CancelForUnav: execute({barberId, startAt, endAt, reason})
     CancelForUnav->>CancelForUnav: busca agendamentos SCHEDULED do<br/>barbeiro no intervalo
     loop cada agendamento afetado
-        CancelForUnav->>Appt: cancelByAdmin(now, "Barber unavailable: "+reason)
+        CancelForUnav->>Appt: cancelByAdmin(now, "Barbeiro indisponível: "+reason)
         CancelForUnav->>Bus: publish(AppointmentCancelledByAdminEvent)
         Bus->>DEC: evento na fila notifications
         DEC->>SMTP: envia e-mail ao cliente com o motivo

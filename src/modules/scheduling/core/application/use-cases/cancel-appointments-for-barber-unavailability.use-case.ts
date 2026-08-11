@@ -36,7 +36,7 @@ export class CancelAppointmentsForBarberUnavailabilityUseCase implements UseCase
         input.endAt,
       );
 
-    const reason = `Barber unavailable: ${input.reason}`;
+    const reason = `Barbeiro indisponível: ${input.reason}`;
     let cancelledCount = 0;
 
     for (const appointment of appointments) {

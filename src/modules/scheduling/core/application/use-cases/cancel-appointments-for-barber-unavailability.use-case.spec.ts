@@ -100,10 +100,10 @@ describe('CancelAppointmentsForBarberUnavailabilityUseCase', () => {
 
     expect(result.cancelledCount).toBe(2);
     expect(appointmentOne.getCancellationReason()).toBe(
-      'Barber unavailable: Sick leave',
+      'Barbeiro indisponível: Sick leave',
     );
     expect(appointmentTwo.getCancellationReason()).toBe(
-      'Barber unavailable: Sick leave',
+      'Barbeiro indisponível: Sick leave',
     );
     expect(appointmentRepository.save).toHaveBeenCalledTimes(2);
     expect(eventBus.publish).toHaveBeenCalledTimes(2);
